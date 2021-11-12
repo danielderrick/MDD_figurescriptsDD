@@ -756,8 +756,61 @@ if(create_pdfs){
 
 
 ```{r cPCA_on_raw}
+
+#' Read an assay's csv or tsv data file 
+load_prep_data <- function(assay_name, md = md, level = 3){
+  file_name <- dir(path = paste0("../",assay_name,"/Data"), pattern = paste0("MDD_", assay_name,"_","Level",level,".csv"), recursive = TRUE, full.names = TRUE)
+  if(!length(file_name) == 1) stop("There was not one ", assay_name, " data file found")
+    
+  if(str_detect(file_name, "csv")) {
+    df <- read_csv(file_name)
+  } else if (str_detect(file_name, "tsv")){
+    df <- read_tsv(file_name)
+  } else stop("The data file ",file_name, " must be a csv or tsv file type")
+  
+  if(assay_name == "RPPA"){
+    df <- df %>%
+      rename(feature = antibody)
+  } else  if(assay_name == "ATACseq") {
+    df <- df %>%
+      rename(feature = peak)
+  } else  if(assay_name == "GCP") {
+    df <- df %>%
+      rename(feature = histone)
+  } else  if(assay_name == "RNAseq") {
+    df <- df %>%
+      rename(feature = ensembl_gene_id)
+  }
+    df <- df %>%
+    gather(specimenID, value, -feature) %>%
+    inner_join(md, by = "specimenID") %>%
+    select(feature, specimenName, value) %>%
+    spread(specimenName, value) %>%
+    mutate(feature = factor(feature)) %>%
+      arrange(feature,)
+  #Set the order of the columns
+  condition_order <-  paste(rep(c("CTRL","PBS", "HGF", "OSM", "EGF","BMP2", "IFNG", "TGFB"), each = 30, times = 3), rep(c(0, 1, 4 ,8, 24, 48), each = 5, times = 3), rep(c("C1", "C2", "C3"), each = 240), rep(c("A", "B", "C", "D", "E"), times = 105),  sep = "_") %>%
+    intersect(colnames(df))
+  
+  #Arrange columns by standard condition order
+  df <- df %>%
+    mutate(feature_type = paste0(feature,"_", assay_name)) %>%
+    select(feature_type, condition_order)
+
+  return(df)
+}
+
+md <- read_csv("../metadata/MDD_sample_annotations.csv") %>%
+  mutate(specimenName = str_replace(specimenName, "ctrl", "CTRL"),
+         experimentalCondition = str_replace(experimentalCondition, "ctrl", "CTRL"),
+         ligand= str_replace(ligand, "ctrl", "CTRL"))
+
 #Need to reload all datasets and reselect to get the full final multiomcis  dataset
 #reformat raw data to match rrscaled data format
+mdd_level3 <- map(c("RPPA", "GCP", "ATACseq"), load_prep_data, md, level = 3) %>%
+  bind_rows() %>%
+ filter(feature_type %in% unique(mo_rr$feature_type)) 
+
 mo_rr <- combined18_features_data %>%
   mutate(feature_type = str_replace_all(feature_type, "-",""))
 mo_raw <- selected_assay_pk_data %>%
