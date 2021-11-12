@@ -167,6 +167,13 @@ combined14_features_data_mean_dm <- combined14_features_data_mean %>%
 as.matrix()
 rownames(combined14_features_data_mean_dm) <- paste0("Module_",combined14_features_data_mean$Cluster)
 
+#separate the assays for MoCluster analysis
+RNAseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "RNAseq"),]
+RPPA_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "RPPA"),]
+GCP_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "GCP"),]
+cycIF_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "cycIF"),]
+ATACseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "motifs"),]
+
 heatmap_cluster_num <- 11
 cPCA_sparsity <- .9
 moa <- mbpca(list(combined18_features_dm), ncomp = heatmap_cluster_num, method = "globalScore", k = cPCA_sparsity,
