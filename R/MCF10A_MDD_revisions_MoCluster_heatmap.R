@@ -174,29 +174,91 @@ GCP_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "G
 cycIF_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "cycIF"),]
 ATACseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "motifs"),]
 
-heatmap_cluster_num <- 11
+rnd_dm <- function(dm){
+  dm_r <- dm[sample(1:nrow(dm)),sample(1:ncol(dm))]
+  df_r <- as_tibble(dm_r, rownames = "feature_type")
+  return(df_r)
+}
+
+
+max_JLV_nbr <- 20
 cPCA_sparsity <- .9
-moa <- mbpca(list(combined18_features_dm), ncomp = heatmap_cluster_num, method = "globalScore", k = cPCA_sparsity,
+moa <- mbpca(list(RNAseq_dm, RPPA_dm, GCP_dm, cycIF_dm,ATACseq_dm), ncomp = max_JLV_nbr, method = "globalScore", k = cPCA_sparsity,
              option = "lambda1", center=TRUE, scale=FALSE, moa = TRUE, svd.solver = "fast", maxiter = 1000)
-print(moa@eig)
+df <- tibble(eigenvalue = moa@eig, JLV = 1:length( moa@eig))
+p_eigen <- ggplot(df, aes(x = JLV, y = eigenvalue)) +
+  geom_path()  +
+  geom_point() +
+  labs(title = "Pseudoeigenvalues to optimize number of JLVs")
+p_eigen
+
+max_JLV_nbr <- 8
+moa <- mbpca(list(RNAseq_dm, RPPA_dm, GCP_dm, cycIF_dm,ATACseq_dm), ncomp = max_JLV_nbr, method = "globalScore", k = cPCA_sparsity,
+             option = "lambda1", center=TRUE, scale=FALSE, moa = TRUE, svd.solver = "fast", maxiter = 1000)
 scr <- moaScore(moa)
+colnames(scr) <- str_replace(colnames(scr), "PC", "JLV")
 
 ##find correlations between the modules PCs
 cor_mdd_cPCA <- cor(t(combined14_features_data_mean_dm), scr, method = "pearson")
 
-clusters = dendextend::cutree(hr, k = 14)
-
 cor_hm <- Heatmap(cor_mdd_cPCA,
+                  column_title = paste("Correlation of MultiOmic CPCA\n to MDD modules\n sparsity:",cPCA_sparsity),
                   name = "pearson\ncorrelation",
                   row_names_gp = gpar(fontsize = 10),
+                  cluster_rows = FALSE,
+                  cluster_columns = FALSE,
                   #split = clusters,
-                  column_names_gp = gpar(fontsize = 10),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
+                  column_names_gp = gpar(fontsize = 8),
+                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")),
+                  column_title_gp = gpar(fontsize = 8))
 cor_hm
 
-pdf("MCF10A_MDD_MoCluster_heatmap.pdf", width = 4,height = 5)
-heatmap(t(scr[, 1:heatmap_cluster_num]), col = brewer.pal(9,"RdBu")[9:1], Rowv = NA, Colv=NA)
+#find correlations between the MoCluster PCs and a random version of the mdd clusters
+
+random_combined18 <- map(list(RNAseq_dm, RPPA_dm, GCP_dm, cycIF_dm, ATACseq_dm), rnd_dm) %>%
+  bind_rows() %>%
+  left_join(tibble(feature_type = names(clusters), Cluster = clusters), by = "feature_type")
+
+random_combined14 <- random_combined18 %>%
+  mutate(Cluster = as.character(Cluster),
+         Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
+                             Cluster %in% c("6","16") ~"6+16",
+                             Cluster %in% c("8", "17") ~"8+17",
+                             Cluster %in% c("10","15") ~"10+15",
+                             TRUE ~Cluster),
+         Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
+  as.data.frame()
+random_combined14_mean <-  random_combined14 %>%
+  group_by(Cluster) %>%
+  summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
+
+random_combined14_mean_dm <- random_combined14_mean %>%
+  select(-Cluster)  %>%
+  as.matrix()
+rownames(random_combined14_mean_dm) <- paste0("Module_",random_combined14_mean$Cluster)
+random_c14_cPCA <- cor(t(random_combined14_mean_dm), scr, method = "pearson")
+
+rnd_cor_hm <- Heatmap(random_c14_cPCA,
+                      column_title = "Correlation of MultiOmic CPCA\n to MDD modules of randomized data",
+                      name = "pearson\ncorrelation",
+                      row_names_gp = gpar(fontsize = 10),
+                      cluster_rows = FALSE,
+                      cluster_columns = FALSE,
+                      #split = clusters,
+                      column_names_gp = gpar(fontsize = 8),
+                      col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
+rnd_cor_hm
+
+pdf(paste0("MCF10A_MDD_MoCluster_heatmaps_sparsity_",cPCA_sparsity,".pdf"), width = 5,height = 5)
+print(p_eigen)
+print(Heatmap(t(scr), 
+              name = "CPCA Score",
+              col = brewer.pal(9,"RdBu")[9:1],
+              cluster_rows = FALSE, 
+              cluster_columns = FALSE,
+              column_names_gp = gpar(fontsize = 6)))
 print(cor_hm)
+print(rnd_cor_hm)
 res <- dev.off()
 
 #Use PC2 loadings to compare 
