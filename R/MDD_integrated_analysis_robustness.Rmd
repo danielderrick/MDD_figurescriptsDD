@@ -1,0 +1,775 @@
+---
+title: "MDD integrated analysis robustness evaluation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache=FALSE, cache.lazy = FALSE, message=FALSE, warning = FALSE, fig.height=10, fig.width=14)
+
+suppressMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ComplexHeatmap))
+suppressPackageStartupMessages(library(circlize))
+library(caret)
+library(cluster)
+library(clue)
+library(matrixStats)
+library(ggbeeswarm)
+
+source("../R/MDD_functions.R")
+create_pdfs <- FALSE
+write_csvs <- FALSE
+
+```
+
+
+
+```{r setup_parameters_and_metadata}
+keep_PBS <- FALSE
+PBS_pointer <- "_noPBS2"
+if(keep_PBS) PBS_pointer <- ""
+
+data_path <- paste0("../Data/integrated_matrix_lfc_rr",PBS_pointer, ".csv")
+p_values_path <- paste0("../Data/integrated_adj_p_values", PBS_pointer, ".csv") 
+shared_features_path <- paste0("../Data/integrated_shared_features_rr", PBS_pointer, ".csv") 
+unique_features_path <- paste0("../Data/integrated_unique_features_rr", PBS_pointer, "_absDir.csv") 
+#shared_clust_num <- 12
+combined_clust_num <- 18
+cluster_method <- "pam"
+
+experimentalTimePoints <- c("_24", "_48")
+if(keep_PBS) {
+  ligand_order <-  c("PBS", "HGF", "OSM", "EGF","BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
+} else {
+  ligand_order <-  c("HGF", "OSM", "EGF","BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
+}
+
+condition_order <- paste0(rep(ligand_order, each = length(experimentalTimePoints)), rep(c("_24", "_48"), times = length(ligand_order)))
+
+#create a named vector of color values for the Heatmap clusters
+cluster_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[c(1:12)], names = 1:12), c("13" = "#222222", "14" = "#555555", "15" = "#999999", "16" = "#AAAAAA", "17" = "#BBBBBB", "18" = "#CCCCCC", "19" = "#DDDDDD"))
+
+combined14_clusters <-c("1", "2", "3+4", "5", "6+16", "7", "8+17", "9", "10+15", "11", "12", "13", "14","18")
+
+cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = combined14_clusters[1:12]), c("14" = "#222222", "18" = "#555555"))
+
+ligand_cols <- c("CTRL" = "#7A4A2A",
+                 "PBS" = "#8dd3c7",
+                 "HGF" = "#80b1d3",
+                 "OSM" = "#fdb462",
+                 "EGF" = "#fb8072",
+                 "BMP2+EGF" = "#b3de69",
+                 "IFNG+EGF" = "#bebada",
+                 "TGFB+EGF" = "#ffd92f")
+
+#create factors for Up/Down unique features
+up_down_cluster_levels <- paste(names(ligand_cols), rep(c("Negative", "Mixed", "Positive"), each = length(ligand_cols)), sep = "_")
+ 
+up_down_cluster_colors <- rep(ligand_cols, times = 3)
+names(up_down_cluster_colors) <- up_down_cluster_levels
+
+```
+
+This analysis is run with keep_PBS flag set to `r keep_PBS`.  
+The cluster method is `r cluster_method`.  
+Input files are `r data_path`, `r shared_features_path` and `r unique_features_path`.  
+
+Method summary:
+
+Use replicates to perform differential (DE) analysis between conditions and ctrl_0 for RNAseq, RPPA, GCP and cycIF assays. Use family z scores for motifs.  
+rrscale the DE values within each assay  
+Use set analysis to select features that are significantly expressed by a single ligand (ligand-specific) or multiple ligands (shared)  
+Perform Gap analysis with pam clustering on the shared and ligand-specific values as a single dataset  
+Combine 4 similar cluster/module pairs to yield a combined14 dataset  Evaluate the combined14 dataset with UMAP  
+Correlate the combined14 modules with IF and cell tracking phenotypes  
+Get enriched Reactome pathways for the RNAseq genes each combined14 module  
+Evaluate the modules/assay content and distributions  
+Evaluate T0 centered versions of the assay values using the combined14 structure  
+
+```{r prepData}
+#load the raw data asay_pk_data for future processing
+load("../Data/selected_assay_pk_data.rda")
+
+#Read in the integrated data, add EGF to some names, set order
+if(!file.exists(data_path)) stop("cannot read ",data_path)
+all_features_data <- read_csv(data_path) %>%
+  pivot_longer(cols = matches("_24|_48"), names_to = "condition") %>%
+  mutate(condition = str_replace(condition, "BMP2","BMP2+EGF"),
+         condition = str_replace(condition, "IFNG","IFNG+EGF"),
+         condition = str_replace(condition, "TGFB","TGFB+EGF"),
+         feature_type =  paste(feature, Type, sep = "_")) %>%
+  pivot_wider(names_from = condition, values_from = value) %>%
+  select(feature, Type, feature_type, all_of(condition_order)) %>%
+  drop_na
+
+#Read in the integrated data, add EGF to some names, set order
+if(!file.exists(unique_features_path)) stop("cannot read ",unique_features_path)
+set.seed(42) #randomize row positions
+unique_features <- read_csv(unique_features_path) %>%
+  slice_sample(prop = 1)
+unique_features_data <- unique_features%>%
+  mutate(ligand = str_replace(ligand, "BMP2","BMP2+EGF"),
+         ligand = str_replace(ligand, "IFNG","IFNG+EGF"),
+         ligand = str_replace(ligand, "TGFB","TGFB+EGF"),
+         feature_type =  paste(feature, Type, sep = "_"),
+         Set = ligand) %>%
+  select(ligand, feature_type, Abs_Direction, Set) %>%
+  rename(Direction = Abs_Direction) %>%
+  left_join(all_features_data, by = "feature_type") %>%
+  rename(Cluster = ligand) %>%
+  mutate(Cluster = paste(Cluster, Direction, sep = "_")) %>%
+  drop_na
+
+#Read in the integrated data, add EGF to some names, set order
+if(!file.exists(shared_features_path)) stop("cannot read ",shared_features_path)
+set.seed(42) #randomize row positions
+shared_features <- read_csv(shared_features_path) %>%
+  slice_sample(prop = 1)
+shared_features_data <- shared_features %>%
+  mutate(ligand = str_replace(ligand, "BMP2","BMP2+EGF"),
+         ligand = str_replace(ligand, "IFNG","IFNG+EGF"),
+         ligand = str_replace(ligand, "TGFB","TGFB+EGF"),
+         feature_type =  paste(feature, Type, sep = "_"),
+         Set = "shared") %>%
+  select(feature_type, Set) %>%
+  distinct() %>%
+  left_join(all_features_data, by = c("feature_type" ))  %>%
+  drop_na
+
+set.seed(42) #randomize row positions
+combined18_features_data <- bind_rows(shared_features_data, select(unique_features_data, -Direction, -Cluster)) %>%
+  slice_sample(prop = 1)
+assay_cols <- structure(RColorBrewer::brewer.pal(8, "Paired")[c(3, 2,6,5, 1)], names = unique(combined18_features_data$Type))
+
+```
+## {.tabset .tabset-fade}
+
+### Combined heatmaps
+
+```{r heatmaps}
+
+#create a numeric matrix with feature row names
+combined18_features_dm <- combined18_features_data %>%
+  select(all_of(condition_order)) %>%
+  as.matrix() 
+rownames(combined18_features_dm) <- combined18_features_data$feature_type
+combined18_features_dm <- combined18_features_dm[!is.nan(combined18_features_dm[,1]),]
+
+set.seed(42)
+medoids <- sample(1:nrow(combined18_features_dm), size = combined_clust_num, replace = FALSE)
+    
+#cluster all features 
+if(cluster_method == "kmeans"){
+  #seed the clustering with a fixed, random set of points
+  set.seed(42)
+  centers <- combined18_features_dm[sample(1:nrow(combined18_features_dm), size = combined18_clust_num, replace = FALSE),]
+  clusters <- kmeans(x = combined18_features_dm, iter.max = 20, centers = centers)$cluster
+} else if(cluster_method == "HA") {
+  clust_obj <- hclust(dist(combined18_features_dm))
+  clusters <- cutree(clust_obj, k = combined_clust_num)
+} else if(cluster_method == "pam") {
+  
+  if(file.exists(paste0("../Data/MDD_",cluster_method,"_clusters.rda"))){
+    load(paste0("../Data/MDD_",cluster_method,"_clusters.rda"))
+  } else {
+   
+    clusters  <- pam(x = combined18_features_dm, k = combined_clust_num, medoids = medoids, cluster.only=TRUE, pamonce = 5)
+    save(clusters, file = paste0("../integrated_analysis/MDD_",cluster_method,"_clusters.rda"))
+  }
+  
+} else stop("unsupported cluster method chosen")
+
+#Add the cluster assignements to the data
+combined18_features_data_ann <-  tibble(feature_type = names(clusters),
+                                      Cluster = clusters) %>%
+  right_join(combined18_features_data, by = "feature_type") %>%
+  mutate(Cluster = factor(Cluster, ordered = TRUE))
+
+combined18_features_ann <- combined18_features_data_ann %>%
+  select(Cluster, Type, Set) %>%
+  as.data.frame()
+
+#Make heatmap with annotations
+haRow_combined18 <- HeatmapAnnotation(df = combined18_features_ann,
+                                    which = "row",
+                                    col = list(Cluster = factor(cluster_cols, levels = cluster_cols, ordered = TRUE),
+                                               Type = assay_cols,
+                                               Set = c("shared" = "black", ligand_cols)))
+
+hm_combined18 <- Heatmap(combined18_features_dm,
+                       name = "lfc rr",
+                       column_title = "combined18 features",
+                       column_title_gp = gpar(fontsize = 12),
+                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+                       cluster_rows = FALSE,
+                       cluster_row_slices = FALSE, 
+                       cluster_columns = FALSE,
+                       row_split = combined18_features_ann$Cluster,
+                       row_gap = unit(2, "mm"),
+                       row_title = " ",
+                       show_row_names = FALSE,
+                       row_names_gp = gpar(fontsize = 8),
+                       column_names_gp = gpar(fontsize = 10),
+                       left_annotation = haRow_combined18,
+                       use_raster = FALSE)
+hm_combined18
+```
+
+```{r evaluate_robustness, eval = FALSE}
+clusterResampling = function(x, ngenes = 50, k = 2, B = 250,
+                             prob = 0.67) {
+  mat = Biobase::exprs(x) #create a matrix with gene rows and cell/samples columns
+  ce = cl_ensemble(list = lapply(seq_len(B), function(b) {
+    selSamps = sample(ncol(mat), size = round(prob * ncol(mat)),
+                      replace = FALSE) #select a subset of the columns
+    submat = mat[, selSamps, drop = FALSE] #create a matrix of the column subset
+    sel = order(rowVars(submat), decreasing = TRUE)[seq_len(ngenes)] #order the gene rows by variance
+    submat = submat[sel,, drop = FALSE] #select the highest varying genes
+    pamres = pam(t(submat), k = k) #pam cluster the matrix, rows are observations, columns = variables
+    pred = cl_predict(pamres, t(mat[sel, ]), "memberships") #use the subset cluster to predict the full sample clusters
+    as.cl_partition(pred) #convert data format to a partition class
+  }))
+  cons = cl_consensus(ce) #convert the list of partitions into a consensus ensemble
+  ag = sapply(ce, cl_agreement, y = cons) #measure the agreement between the ensemble predictions and the each consensus clustering solution
+  list(agreements = ag, consensus = cons)
+}
+
+#Goal is to evaluate clustering to "show that these modules are robust to technical variation in the data".
+#method use subsets of the data to predict the membership of the full dataset
+#compare the predicted memberships to the MDD memberships
+clusterResamplingMDD <- function(prop = 0.95, mat = combined18_features_dm, k = 14, B = 5 ){
+    ce = cl_ensemble(list = lapply(seq_len(B), function(b) { #Create B clusterings
+    selSamps = sample(nrow(mat), size = round(prop * nrow(mat)),
+                      replace = FALSE)
+    submat = mat[selSamps, ,drop = FALSE]
+    pamres  <- pam(x = submat, k = k,  pamonce = 5)
+    pred = cl_predict(pamres, mat, "memberships")
+    as.cl_partition(pred)
+  }))
+    cons = cl_consensus(ce)
+  ag = sapply(ce, cl_agreement, y = cons)
+  list(agreements = ag, consensus = cons, proportion = prop)
+}
+
+#cluster the MDD matrix to reproduce the results but format as a cluster object
+combined_clust_num <- 14
+set.seed(42)
+medoids <- sample(1:nrow(combined18_features_dm), size = combined_clust_num, replace = FALSE)
+mdd_clusters  <- pam(x = combined18_features_dm, k = combined_clust_num, medoids = medoids, pamonce = 5)
+
+B = 20
+res <- clusterResamplingMDD(B = B, prop = 1)
+dfa1 <- tibble(agreements = res$agreements, proportion = res$proportion)
+dfm1 <- tibble(y = sort(cl_membership(res$consensus)[, 1]),
+              x = seq(along = y), proportion = 1-res$proportion)
+
+res <- clusterResamplingMDD(B = B, prop = .99)
+dfa99 <- tibble(agreements = res$agreements, proportion = res$proportion)
+dfm99 <- tibble(y = sort(cl_membership(res$consensus)[, 1]),
+              x = seq(along = y), proportion = 1-res$proportion)
+
+res <- clusterResamplingMDD(B = B, prop = .95)
+dfa95 <- tibble(agreements = res$agreements, proportion = res$proportion)
+dfm95 <- tibble(y = sort(cl_membership(res$consensus)[, 1]),
+              x = seq(along = y), proportion = 1-res$proportion)
+
+res <- clusterResamplingMDD(B = B, prop = .90)
+dfa90 <- tibble(agreements = res$agreements, proportion = res$proportion)
+dfm90 <- tibble(y = sort(cl_membership(res$consensus)[, 1]),
+              x = seq(along = y), proportion = 1-res$proportion)
+
+res <- clusterResamplingMDD(B = B, prop = .80)
+dfa80 <- tibble(agreements = res$agreements, proportion = res$proportion)
+dfm80 <- tibble(y = sort(cl_membership(res$consensus)[, 1]),
+              x = seq(along = y), proportion = 1-res$proportion)
+
+dfa <- bind_rows(dfa1, dfa99, dfa95, dfa90, dfa80)
+dfm <- bind_rows(dfm1, dfm99, dfm95, dfm90, dfm80)
+
+
+#design a different approach to cluster stability
+#how robust are the 14 clusters to missing data
+
+#start with the full unclustered matrix, 7649 x 12
+#create a subsample by removing a small percent of the data
+#use the same method as in the paper to cluster the subsample
+#cluster the MDD matrix to reproduce the results but format as a cluster object
+# combined_clust_num <- 18
+# set.seed(42)
+# medoids <- sample(1:nrow(combined18_features_dm), size = combined_clust_num, replace = FALSE)
+# mdd_clusters  <- pam(x = combined18_features_dm, k = combined_clust_num, medoids = medoids, cluster.only = TRUE, pamonce = 5)
+# 
+# #create a dataframe with non-medoid values missing
+# missing_percent <- 0.01
+# non_medoid_names <- rownames(combined18_features_dm[-medoids,])
+# set.seed(1)
+# non_medoid_names_to_keep <- non_medoid_names[sample(1:length(non_medoid_names),size = (1-missing_percent)*length(non_medoid_names), replace = FALSE )]
+# rownames_to_keep <- c(rownames(combined18_features_dm[medoids,]), non_medoid_names_to_keep)
+# #create a matrix that contains the medoids and a subsample fo the non-medoid rows
+# mdd_subsample <- combined18_features_dm[rownames(combined18_features_dm) %in% rownames_to_keep,]
+# #find the original medoids in the subsample
+# medoid_new_position <- which(rownames(mdd_subsample)%in% rownames(combined18_features_dm[medoids,]) )
+# #cluster the subsample using the same medoids
+# subsample_clusters  <- pam(x = mdd_subsample, k = combined_clust_num, medoids = medoid_new_position, cluster.only = TRUE,pamonce = 5)
+# 
+# #Evaluate the rows from the mdd clusters that are in the subsample
+# mdd_clusters_in_subsample <- mdd_clusters[names(mdd_clusters) %in% rownames_to_keep]
+# #create a confusion matrix and print it
+# cm <- caret::confusionMatrix(factor(mdd_clusters_in_subsample), factor(subsample_clusters))
+# 
+# print(cm)
+# 
+# #create a dataframe of the initial medoids
+# initial_medoids <- combined18_features_dm[medoids,]
+# #remove the initial medoids before sampling the mdd matrix
+# mdd_no_initial_medoids <- combined18_features_dm[-medoids,]
+# #create a subsample by removing a small percent of the data
+# 
+# subsample <- sample(1:nrow(mdd_no_initial_medoids), size = (1-missing_percent)*nrow(mdd_no_initial_medoids), replace = FALSE)
+# subsample_dm <- rbind(initial_medoids, mdd_no_initial_medoids[subsample,])
+# 
+# #use the same method as in the paper to cluster the subsample
+# subsample_clusters  <- pam(x = subsample_dm, k = combined_clust_num, medoids = 1:dim(initial_medoids)[1])
+# subsample_clusters  <- pam(x = combined18_features_dm, k = combined_clust_num, medoids = medoids, pamonce = 5)
+# 
+# #compare the assignments in the subsample to their original clusters
+# mdd_cluster_df <-tibble(name = names(mdd_clusters$clustering),
+#                         mdd_cluster = mdd_clusters$clustering)
+# subsample_cluster_df<- tibble(name = names(subsample_clusters$clustering),
+#             subsample_cluster = subsample_clusters$clustering) %>%
+#   left_join(mdd_cluster_df)
+# 
+# cm <- caret::confusionMatrix(factor(subsample_cluster_df$mdd_cluster), factor(subsample_cluster_df$subsample_cluster))
+# 
+# print(cm)
+# 
+# mdd_clusters2  <- pam(x = rbind(combined18_features_dm[medoids,], combined18_features_dm[-medoids,]), k = combined_clust_num, medoids = 1:18, cluster.only = TRUE)
+# 
+# cm <- caret::confusionMatrix(factor(mdd_clusters), factor(mdd_clusters2))
+# 
+# print(cm)
+
+#compare the original cluster to one with some rows replaced with noise
+#create a dataframe with non-medoid values missing
+res <- lapply(c(0, .01, .02), function(noise_percent){
+non_medoid_names <- rownames(combined18_features_dm[-medoids,])
+set.seed(10)
+non_medoid_names_to_change <- non_medoid_names[sample(1:length(non_medoid_names),size = (noise_percent)*length(non_medoid_names), replace = FALSE )]
+#create a matrix that contains the medoids and a subsample fo the non-medoid rows
+mdd_noisey <- combined18_features_dm
+mdd_noisey[rownames(mdd_noisey) %in% non_medoid_names_to_change,] <- sample(mdd_noisey,size = length(non_medoid_names_to_change)*12)
+
+#cluster the noisey version using the same medoids
+noisey_clusters  <- pam(x = mdd_noisey, k = combined_clust_num, medoids = medoids, cluster.only = TRUE,pamonce = 5)
+
+#Evaluate the rows from the mdd clusters that are in the subsample
+mdd_clusters_in_noise_dataset <- mdd_clusters[names(mdd_clusters) %in% names(noisey_clusters)]
+#create a confusion matrix and print it
+cm <- caret::confusionMatrix(factor(noisey_clusters), factor(mdd_clusters_in_noise_dataset))
+print(paste("noise percent",noise_percent))
+print(cm)
+cm_table <- cm$table
+write.csv(cm$table, paste0("confusionMatrix_noise_",noise_percent,".csv"))
+})
+
+combined14_features_data_ann <- combined18_features_data_ann %>%
+    mutate(Cluster = as.character(Cluster),
+      Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
+                          Cluster %in% c("6","16") ~"6+16",
+                          Cluster %in% c("8", "17") ~"8+17",
+                          Cluster %in% c("10","15") ~"10+15",
+                               TRUE ~Cluster),
+      Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
+  as.data.frame()
+
+#Remove the cluster assignments to keep the code similar to the 
+#other dataset processing
+combined14_features_data <- combined14_features_data_ann %>%
+  select(-Cluster)
+
+#create a numeric matrix with feature row names
+combined14_features_dm <- combined14_features_data %>%
+  select(all_of(condition_order)) %>%
+  as.matrix() 
+rownames(combined14_features_dm) <- combined14_features_data$feature_type
+combined14_features_dm <- combined14_features_dm[!is.nan(combined14_features_dm[,1]),]
+
+combined14_features_ann <- combined14_features_data_ann %>%
+  select(Cluster, Type, Set) %>%
+  as.data.frame()
+
+#Create a matrix and heatmap of the mean combined18 values
+combined18_features_data_mean <- combined18_features_data_ann %>%
+  group_by(Cluster) %>%
+  summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
+
+
+```
+
+```{r agreement_vs_noise}
+
+##create an ensemble of clusterings at different noise levels
+# ++++++++++++++++++++++++++++
+# flattenCorrMatrix
+# ++++++++++++++++++++++++++++
+# cormat : matrix of the correlation coefficients
+# pmat : matrix of the correlation p-values
+flattenTriMatrix <- function(mat) {
+  ut <- upper.tri(mat)
+  tibble(
+    values  =mat[ut]
+    )
+}
+
+cluster_noise <- function(noise_percent = 1, mat = combined18_features_dm, medoids = medoids, k = 18, B = 25 ){
+  if(noise_percent > 8) stop("noise percent must be 8 or less")
+  ce = cl_ensemble(list = lapply(seq_len(B), function(b) { #Create B clusterings
+    non_medoid_names <- rownames(mat[-medoids,])
+    non_medoid_names_for_noise <- non_medoid_names[sample(1:length(non_medoid_names),size = (dim(mat)[2]*noise_percent*.01)*length(non_medoid_names), replace = FALSE)]
+    
+    #create a matrix that contains the medoids and a subsample of the non-medoid rows
+    mdd_noisey <- combined18_features_dm
+    #
+    mdd_noisey[rownames(mdd_noisey) %in% non_medoid_names_for_noise, sample(1:dim(mat)[2], size = 1)] <- sample(mdd_noisey, size = length(non_medoid_names_for_noise), replace = TRUE)
+    
+    #cluster the noisey version using the same medoids
+    noisey_clusters  <- pam(x = mdd_noisey, k = combined_clust_num, medoids = medoids, pamonce = 5)
+  }))
+  am <- cl_agreement(ce, method = "NMI")
+  # pdf(paste0("agreements_noise_percent_",noise_percent,".pdf"))
+  # plot(am)
+  # res <- dev.off()
+  df <- as.matrix(am) %>%
+    flattenTriMatrix() %>%
+    mutate(noise_percent = noise_percent)
+  return(df)
+}
+
+am_df <- map(c(0,.1, .5, 1, 2, 5, 8), cluster_noise, medoids = medoids) %>%
+  bind_rows()
+
+```
+
+```{r visualize_robustness, fig.height=4, fig.width=4}
+pa_noise <- ggplot(am_df, aes(x = factor(noise_percent), y = values, color = factor(noise_percent))) +
+  geom_boxplot(color = "black",fill = "transparent") +
+  geom_quasirandom(size = .8) +
+  labs(title = "MDD integrated cluster robustness to noise",
+       subtitle = "noise is sampled from the data and inserted in random locations",
+    x = "percent of noise",
+    y = "agreement across clusterings")+ 
+  guides(color = "none")+
+  theme_bw()
+pa_noise
+
+pdf("MDD_cluster_robustness_to_noise.pdf")
+print(pa_noise)
+pdfres <- dev.off()
+
+pm <- ggplot(dfm, aes(x = x, y = y))+
+  geom_point() +
+  facet_wrap(~proportion)
+pm
+
+pdf("MDD_cluster_robustness.pdf")
+print(pa)
+print(pm)
+pdfres <- dev.off()
+
+```
+
+
+```{r combined18_and_14_processing}
+hm_combined18_mean <- Heatmap(combined18_features_data_mean_dm,
+                            name = "lfc ",
+                            column_title = "combined18 cluster means",
+                            column_title_gp = gpar(fontsize = 12),
+                            col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+                            cluster_rows = FALSE,
+                            cluster_row_slices = FALSE,
+                            cluster_columns = FALSE,
+                            row_gap = unit(2, "mm"),
+                            row_title = " ",
+                            show_row_names = TRUE,
+                            row_names_gp = gpar(fontsize = 8),
+                            column_names_gp = gpar(fontsize = 10),
+                            use_raster = FALSE)
+hm_combined18_mean
+
+#find correlations between the modules and show cut to combine
+# #Modules only set
+cor_dm <- cor(t(combined18_features_data_mean_dm),  method = "pearson")
+hr = hclust(dist(cor_dm))
+clusters = dendextend::cutree(hr, k = 14)
+##Adding cuttree
+##
+cor_hm <- Heatmap(cor_dm,
+                   name = "pearson\ncorrelation",
+                  row_names_gp = gpar(fontsize = 10),
+                  split = clusters,
+                  column_names_gp = gpar(fontsize = 10),
+                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
+cor_hm
+
+if(create_pdfs) {
+  pdf("../plots/MDD_combined18_module_module_correlations_reduced.pdf",
+      width = 9, height = 8)
+  res <- print(cor_hm)
+  res <- dev.off()
+}
+
+#####
+#Use the combined18 features data and the cluster assignments to
+#create the combined14 dataset
+
+combined14_features_data_ann <- combined18_features_data_ann %>%
+    mutate(Cluster = as.character(Cluster),
+      Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
+                          Cluster %in% c("6","16") ~"6+16",
+                          Cluster %in% c("8", "17") ~"8+17",
+                          Cluster %in% c("10","15") ~"10+15",
+                               TRUE ~Cluster),
+      Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
+  as.data.frame()
+
+#Remove the cluster assignments to keep the code similar to the 
+#other dataset processing
+combined14_features_data <- combined14_features_data_ann %>%
+  select(-Cluster)
+
+#create a numeric matrix with feature row names
+combined14_features_dm <- combined14_features_data %>%
+  select(all_of(condition_order)) %>%
+  as.matrix() 
+rownames(combined14_features_dm) <- combined14_features_data$feature_type
+combined14_features_dm <- combined14_features_dm[!is.nan(combined14_features_dm[,1]),]
+
+combined14_features_ann <- combined14_features_data_ann %>%
+  select(Cluster, Type, Set) %>%
+  as.data.frame()
+
+#Create a matrix and heatmap of the mean combined18 values
+combined14_features_data_mean <- combined14_features_data_ann %>%
+  group_by(Cluster) %>%
+  summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
+
+combined14_features_count <- combined14_features_data_ann %>%
+  group_by(Cluster) %>%
+  count()
+
+combined14_features_data_mean_dm <- combined14_features_data_mean %>%
+  select(-Cluster) %>%
+  as.matrix()
+
+rownames(combined14_features_data_mean_dm) <-combined14_features_data_mean$Cluster
+
+#Make heatmap with annotations
+haRow_combined14 <- HeatmapAnnotation(df = combined14_features_ann,
+                                    which = "row",
+                                    col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
+                                               Type = assay_cols,
+                                               Set = c("shared" = "white", ligand_cols)))
+
+hm_combined14 <- Heatmap(combined14_features_dm,
+                       name = "lfc rr",
+                       column_title = "combined14 features",
+                       column_title_gp = gpar(fontsize = 12),
+                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+                       cluster_rows = FALSE,
+                       cluster_row_slices = FALSE, 
+                       cluster_columns = FALSE,
+                       row_split = combined14_features_ann$Cluster,
+                       row_gap = unit(2, "mm"),
+                       row_title = " ",
+                       show_row_names = FALSE,
+                       row_names_gp = gpar(fontsize = 8),
+                       column_names_gp = gpar(fontsize = 10),
+                       left_annotation = haRow_combined14,
+                       use_raster = FALSE)
+hm_combined14
+
+###combined14 heatmap with ligand column annotations, RPPA and motif callouts
+  callouts <- read_csv("../Data/MDD_combined14_noRNAseq-lh.csv") %>%
+    filter(selected == "x")
+
+  #Make heatmap with annotations
+col_annotations <- tibble(condition = colnames(combined14_features_dm)) %>%
+  mutate(ligand = str_remove(condition, "_.*")) %>%
+  select(ligand) %>%
+  as.data.frame()
+
+haCol_combined14 <- HeatmapAnnotation(df = col_annotations,
+                                    which = "column",
+                                    col = list(ligand = factor(ligand_cols, levels = ligand_cols, ordered = TRUE)))
+
+df <- combined14_features_data_ann %>%
+  #filter(!Type == "RNAseq") %>%
+  mutate(Color = case_when(Type == "RPPA" ~ "#1F78B4",
+                           Type == "motifs" ~ "#A6CEE3",
+                           Type == "GCP" ~ "#E31A1C",
+                           Type == "cycIF" ~ "#FB9A99",
+                           TRUE ~ ""
+                           ),
+         feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"))
+
+RPPA_motif_rows_right <- which(df$feature_type %in% callouts$feature_type)
+
+label_colors <- df$Color[RPPA_motif_rows_right]
+names(label_colors) <- df$feature[RPPA_motif_rows_right]
+
+haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
+                                   labels = df$feature[RPPA_motif_rows_right],
+                                   labels_gp = gpar(fontsize = 4,
+                                                    col = label_colors)))
+
+hm_combined14_callouts <- Heatmap(combined14_features_dm,
+                       name = "lfc rr",
+                       column_title = "combined14 features",
+                       column_title_gp = gpar(fontsize = 6),
+                       width = ncol(combined14_features_dm)*unit(4, "mm"),
+                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+                       cluster_rows = FALSE,
+                       cluster_row_slices = FALSE, 
+                       cluster_columns = FALSE,
+                       row_split = combined14_features_ann$Cluster,
+                       row_gap = unit(3, "mm"),
+                       row_title = " ",
+                       show_row_names = FALSE,
+                       row_names_gp = gpar(fontsize = 12),
+                       column_names_gp = gpar(fontsize = 6),
+                     # left_annotation = haLeft,
+                       right_annotation = haRight,
+                       top_annotation = haCol_combined14,
+                       use_raster = FALSE)
+hm_combined14_callouts
+
+if(create_pdfs){
+  pdf("../plots/MDD_integrated_combined14_callouts_heatmap.pdf",height = 10) 
+  draw(hm_combined14_callouts)
+  res <- dev.off()
+} 
+
+hm_combined14_mean <- Heatmap(combined14_features_data_mean_dm,
+                              name = "lfc ",
+                              column_title = "combined14 cluster means",
+                              column_title_gp = gpar(fontsize = 12),
+                              col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+                              cluster_rows = FALSE,
+                              cluster_row_slices = FALSE,
+                              cluster_columns = FALSE,
+                              row_gap = unit(2, "mm"),
+                              row_names_side = "left",
+                              row_title = " ",
+                              show_row_names = TRUE,
+                              row_names_gp = gpar(fontsize = 12),
+                              column_names_gp = gpar(fontsize = 10),
+                              use_raster = FALSE)
+draw(hm_combined14_mean, heatmap_legend_side = "left")
+mean_highlight_thresh <- 0.5
+hm_combined14_mean_obj <- Heatmap(combined14_features_data_mean_dm,
+                            name = "lfc ",
+                            column_title = "combined14 cluster means",
+                            column_title_gp = gpar(fontsize = 12),
+                            col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+                            cluster_rows = FALSE,
+                            cluster_row_slices = FALSE,
+                            cluster_columns = FALSE,
+                            row_gap = unit(2, "mm"),
+                            show_row_names = TRUE,
+                            row_names_gp = gpar(fontsize = 8),
+                            column_names_gp = gpar(fontsize = 10),
+                            cell_fun = function(j, i, x, y, width, height, fill) {
+        if(abs(combined14_features_data_mean_dm[i, j]) > mean_highlight_thresh)
+            grid.text(sprintf("%.1f", combined14_features_data_mean_dm[i, j]), x, y, gp = gpar(fontsize = 12))},
+                            use_raster = FALSE)
+hm_combined14_mean <- draw(hm_combined14_mean_obj)
+combined14_cluster_order <- row_order(hm_combined14_mean)
+
+#Remove the cluster assignments to keep the code similar to the 
+#other dataset processing
+#Remove RNAseq and label rows
+combined14_noRNA_features_data <- combined14_features_data_ann %>%
+  select(-Cluster) %>%
+  filter(!Type == "RNAseq")
+
+#create a numeric matrix with feature row names
+combined14_noRNA_features_dm <- combined14_noRNA_features_data %>%
+  select(all_of(condition_order)) %>%
+  as.matrix() 
+rownames(combined14_noRNA_features_dm) <- combined14_noRNA_features_data$feature_type
+combined14_noRNA_features_dm <- combined14_noRNA_features_dm[!is.nan(combined14_noRNA_features_dm[,1]),]
+
+combined14_noRNA_features_ann <- combined14_features_data_ann %>%
+  select(Cluster, Type, Set)  %>%
+  filter(!Type == "RNAseq")%>%
+  as.data.frame()
+
+if(write_csvs){
+  df <- combined14_features_data_ann %>%
+  filter(!Type == "RNAseq")
+  res <- write_csv(df, "../tables/MDD_combined14_noRNAseq.csv")
+    res <- write_csv(combined14_features_data_mean, "../tables/MDD_combined14_mean.csv")
+}
+#Make heatmap with annotations
+haRow_noRNA_combined14 <- HeatmapAnnotation(df = combined14_noRNA_features_ann,
+                                    which = "row",
+                                    col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
+                                               Type = assay_cols,
+                                               Set = c("shared" = "black", ligand_cols)))
+#####
+hm_combined14_noRNA <- Heatmap(combined14_noRNA_features_dm,
+                       name = "lfc rr",
+                       column_title = "combined14 features, no RNAseq",
+                       column_title_gp = gpar(fontsize = 12),
+                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+                       cluster_rows = FALSE,
+                       cluster_row_slices = FALSE, 
+                       cluster_columns = FALSE,
+                       row_split = combined14_noRNA_features_ann$Cluster,
+                       row_gap = unit(2, "mm"),
+                       row_title = " ",
+                       show_row_names = TRUE,
+                       row_names_gp = gpar(fontsize = 2.5),
+                       column_names_gp = gpar(fontsize = 10),
+                       left_annotation = haRow_noRNA_combined14,
+                       use_raster = FALSE)
+hm_combined14_noRNA
+
+#####
+if(create_pdfs){
+  pdf("../plots/MDD_integrated_rr_combined_heatmaps.pdf",height = 10) 
+  draw(hm_combined18)
+  draw(hm_combined18_mean)
+  draw(hm_combined14)
+  draw(hm_combined14_callouts)
+  draw(hm_combined14_mean)
+  draw(hm_combined14_noRNA)
+  res <- dev.off()
+} 
+
+if(create_pdfs){
+  pdf("../plots/MDD_integrated_combined14_mean_heatmap.pdf",height = 8, width = 5) 
+  draw(hm_combined14_mean, heatmap_legend_side = "left")
+  res <- dev.off()
+} 
+
+```
+
+
+```{r cPCA_on_raw}
+#Need to reload all datasets and reselect to get the full final multiomcis  dataset
+#reformat raw data to match rrscaled data format
+mo_rr <- combined18_features_data %>%
+  mutate(feature_type = str_replace_all(feature_type, "-",""))
+mo_raw <- selected_assay_pk_data %>%
+  mutate(feature_type = str_replace(feature, "RNA", "RNAseq"),
+         feature_type = str_replace_all(feature_type, "-","")) %>%
+  filter(feature_type %in% unique(mo_rr$feature_type),
+         experimentalTimePoint %in% c(24, 48)) %>%
+      mutate(ligand_timepoint = paste0(ligand,"_",experimentalTimePoint),) %>%
+  select(ligand_timepoint, feature_type, value) %>%
+  pivot_wider(names_from = ligand_timepoint, values_from = value)
+
+```
+
+
+###
