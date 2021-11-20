@@ -13,6 +13,7 @@ library(umap)
 library(cluster)
 library(RColorBrewer)
 library(writexl)
+library(clue)
 #library(UpSetR)
 
 source("../R/MDD_functions.R")
@@ -24,33 +25,25 @@ write_csvs <- FALSE
 
 
 ```{r setup_parameters_and_metadata}
-keep_PBS <- FALSE
-PBS_pointer <- "_noPBS2"
-if(keep_PBS) PBS_pointer <- ""
+data_path <- "../multiomics_analysis/data/"
 
-data_path <- paste0("../integrated_analysis/integrated_matrix_lfc_rr",PBS_pointer, ".csv")
-p_values_path <- paste0("../integrated_analysis/integrated_adj_p_values", PBS_pointer, ".csv") 
-shared_features_path <- paste0("../integrated_analysis/integrated_shared_features_rr", PBS_pointer, ".csv") 
-unique_features_path <- paste0("../integrated_analysis/integrated_unique_features_rr", PBS_pointer, "_absDir.csv") 
-#shared_clust_num <- 12
-combined_clust_num <- 18
+multiomics_all_features_matrix_path <- paste0(data_path, "MDD_multiomics_matrix.csv")
+shared_features_path <- paste0(data_path,"MDD_multiomics_shared_features.csv") 
+unique_features_path <- paste0(data_path,"MDD_multiomics_unique_features.csv") 
+multiomics_clust_num <- 18
 cluster_method <- "pam"
 
 experimentalTimePoints <- c("_24", "_48")
-if(keep_PBS) {
-  ligand_order <-  c("PBS", "HGF", "OSM", "EGF","BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
-} else {
-  ligand_order <-  c("HGF", "OSM", "EGF","BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
-}
+ligand_order <-  c("HGF", "OSM", "EGF","BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
 
 condition_order <- paste0(rep(ligand_order, each = length(experimentalTimePoints)), rep(c("_24", "_48"), times = length(ligand_order)))
 
 #create a named vector of color values for the Heatmap clusters
 cluster_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[c(1:12)], names = 1:12), c("13" = "#222222", "14" = "#555555", "15" = "#999999", "16" = "#AAAAAA", "17" = "#BBBBBB", "18" = "#CCCCCC", "19" = "#DDDDDD"))
 
-combined14_clusters <-c("1", "2", "3+4", "5", "6+16", "7", "8+17", "9", "10+15", "11", "12", "13", "14","18")
-
-cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = combined14_clusters[1:12]), c("14" = "#222222", "18" = "#555555"))
+multiomics_14_clusters <-c("1+8", "2", "3+5", "4+17", "6+14", "7", "9", "10", "11", "12","13", "15","16", "18")
+                          
+cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = multiomics_14_clusters[1:12]), c("16" = "#222222", "18" = "#555555"))
 
 ligand_cols <- c("CTRL" = "#7A4A2A",
                  "PBS" = "#8dd3c7",
@@ -61,17 +54,10 @@ ligand_cols <- c("CTRL" = "#7A4A2A",
                  "IFNG+EGF" = "#bebada",
                  "TGFB+EGF" = "#ffd92f")
 
-#create factors for Up/Down unique features
-up_down_cluster_levels <- paste(names(ligand_cols), rep(c("Negative", "Mixed", "Positive"), each = length(ligand_cols)), sep = "_")
- 
-up_down_cluster_colors <- rep(ligand_cols, times = 3)
-names(up_down_cluster_colors) <- up_down_cluster_levels
-
 ```
 
-This analysis is run with keep_PBS flag set to `r keep_PBS`.  
 The cluster method is `r cluster_method`.  
-Input files are `r data_path`, `r shared_features_path` and `r unique_features_path`.  
+Input files are `r multiomics_all_features_matrix_path`, `r shared_features_path` and `r unique_features_path`.  
 
 Method summary:
 
@@ -79,19 +65,17 @@ Use replicates to perform differential (DE) analysis between conditions and ctrl
 rrscale the DE values within each assay  
 Use set analysis to select features that are significantly expressed by a single ligand (ligand-specific) or multiple ligands (shared)  
 Perform Gap analysis with pam clustering on the shared and ligand-specific values as a single dataset  
-Combine 4 similar cluster/module pairs to yield a combined14 dataset  Evaluate the combined14 dataset with UMAP  
-Correlate the combined14 modules with IF and cell tracking phenotypes  
-Get enriched Reactome pathways for the RNAseq genes each combined14 module  
+Combine 4 similar cluster/module pairs to yield a multiomics_14 dataset  Evaluate the multiomics_14 dataset with UMAP  
+Correlate the multiomics_14 modules with IF and cell tracking phenotypes  
+Get enriched Reactome pathways for the RNAseq genes each multiomics_14 module  
 Evaluate the modules/assay content and distributions  
-Evaluate T0 centered versions of the assay values using the combined14 structure  
+Evaluate T0 centered versions of the assay values using the multiomics_14 structure  
 
 ```{r prepData}
-#load the raw data asay_pk_data for future processing
-load("~/Documents/MDD_Integrated/Data/assay_pk_data.rda")
 
 #Read in the integrated data, add EGF to some names, set order
-if(!file.exists(data_path)) stop("cannot read ",data_path)
-all_features_data <- read_csv(data_path) %>%
+if(!file.exists(multiomics_all_features_matrix_path)) stop("cannot read ",multiomics_all_features_matrix_path)
+all_features_data <- read_csv(multiomics_all_features_matrix_path) %>%
   pivot_longer(cols = matches("_24|_48"), names_to = "condition") %>%
   mutate(condition = str_replace(condition, "BMP2","BMP2+EGF"),
          condition = str_replace(condition, "IFNG","IFNG+EGF"),
@@ -136,9 +120,9 @@ shared_features_data <- shared_features %>%
   drop_na
 
 set.seed(42) #randomize row positions
-combined18_features_data <- bind_rows(shared_features_data, select(unique_features_data, -Direction, -Cluster)) %>%
+multiomics_data <- bind_rows(shared_features_data, select(unique_features_data, -Direction, -Cluster)) %>%
   slice_sample(prop = 1)
-assay_cols <- structure(RColorBrewer::brewer.pal(8, "Paired")[c(3, 2,6,5, 1)], names = unique(combined18_features_data$Type))
+assay_cols <- structure(RColorBrewer::brewer.pal(8, "Paired")[c(3, 2,6,5, 1)], names = unique(multiomics_data$Type))
 
 ```
 ## {.tabset .tabset-fade}
@@ -148,86 +132,128 @@ assay_cols <- structure(RColorBrewer::brewer.pal(8, "Paired")[c(3, 2,6,5, 1)], n
 ```{r heatmaps}
 
 #create a numeric matrix with feature row names
-combined18_features_dm <- combined18_features_data %>%
+multiomics_data_dm <- multiomics_data %>%
   select(all_of(condition_order)) %>%
   as.matrix() 
-rownames(combined18_features_dm) <- combined18_features_data$feature_type
-combined18_features_dm <- combined18_features_dm[!is.nan(combined18_features_dm[,1]),]
+rownames(multiomics_data_dm) <- multiomics_data$feature_type
+multiomics_data_dm <- multiomics_data_dm[!is.nan(multiomics_data_dm[,1]),]
 
-#cluster all features 
-if(cluster_method == "kmeans"){
-  #seed the clustering with a fixed, random set of points
-  set.seed(42)
-  centers <- combined18_features_dm[sample(1:nrow(combined18_features_dm), size = combined18_clust_num, replace = FALSE),]
-  clusters <- kmeans(x = combined18_features_dm, iter.max = 20, centers = centers)$cluster
-} else if(cluster_method == "HA") {
-  clust_obj <- hclust(dist(combined18_features_dm))
-  clusters <- cutree(clust_obj, k = combined_clust_num)
-} else if(cluster_method == "pam") {
-  
-  if(file.exists(paste0("../integrated_analysis/MDD_",cluster_method,"_clusters.rda"))){
-    load(paste0("../integrated_analysis/MDD_",cluster_method,"_clusters.rda"))
+  if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
+    cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_clusters.csv")) 
+    clusters <- cluster_df %>%
+      pull(Cluster)
+    names(clusters) <- cluster_df %>%
+      pull(feature_type)
   } else {
-    set.seed(42)
-    medoids <- sample(1:nrow(combined18_features_dm), size = combined_clust_num, replace = FALSE)
-    clusters  <- pam(x = combined18_features_dm, k = combined_clust_num, medoids = medoids, cluster.only=TRUE, pamonce = 5)
-    save(clusters, file = paste0("../integrated_analysis/MDD_",cluster_method,"_clusters.rda"))
-  }
-  
-} else stop("unsupported cluster method chosen")
+    #TODO replace this with a consensus clustering
+#     Consensus clusterings “synthesize” the information in the elements of a cluster ensemble into a single clustering, often by minimizing a criterion function measuring how dissimilar consensus candidates are from the (elements of) the ensemble (the so-called “optimization approach” to consensus clustering).
+# 
+# The most popular criterion functions are of the form L(x) = ∑ w_b d(x_b, x)^p, where d is a suitable dissimilarity measure (see cl_dissimilarity), w_b is the case weight given to element x_b of the ensemble, and p ≥ 1. If p = 1 and minimization is over all possible base clusterings, a consensus solution is called a median of the ensemble; if minimization is restricted to the elements of the ensemble, a consensus solution is called a medoid (see cl_medoid). For p = 2, we obtain least squares consensus partitions and hierarchies (generalized means). See also Gordon (1999) for more information.
+# 
+# If all elements of the ensemble are partitions, the built-in consensus methods compute consensus partitions by minimizing a criterion of the form L(x) = ∑ w_b d(x_b, x)^p over all hard or soft partitions x with a given (maximal) number k of classes. Available built-in methods are as follows.
+    nbr_clusterings <- 100
+    nbr_consensus <- 3
+    
+    create_consensus_clustering <- function(mat = multiomics_data_dm,
+                                            nbr_clusterings = 5,
+                                            nbr_consensus = 3,
+                                            clust_num = multiomics_clust_num){
+      cons_list <- lapply(seq_len(nbr_consensus), function(c) {
+        cons <- cl_ensemble(list = lapply(seq_len(nbr_clusterings), function(b) { #Create clusterings
+          medoids <- sample(1:nrow(mat), size = clust_num, replace = FALSE)
+          clusters  <- pam(x = mat, 
+                           k = clust_num, 
+                           medoids = medoids, 
+                           pamonce = 5)})) %>%
+          cl_consensus(method = "HE", control = list(nruns = 5))
+      }) %>%
+         cl_consensus(method = "HE", control = list(nruns = 5))
+    }
+cons <- create_consensus_clustering(nbr_clusterings = nbr_clusterings, nbr_consensus= nbr_consensus) 
+clusters <- cl_class_ids(cons)
+names(clusters) <- rownames(cons$.Data)
 
+# cons_2 <- create_consensus_clustering(nbr_clusterings = nbr_clusterings)
+# cons_3 <- create_consensus_clustering(nbr_clusterings = nbr_clusterings)
+# 
+# cons_cons <- cl_consensus(cl_ensemble(list(cons_1, cons_2, cons_3)), method = "HE", control = list(nruns = 5))
+# cl_agreement(cons_1, cons_2,method = "Rand")
+# cl_agreement(cons_1, cons_2,method = "NMI")
+# cl_agreement(cons_1, cons_2,method = "J")
+# cl_agreement(cons_1, cons_3,method = "Rand")
+# cl_agreement(cons_1, cons_3,method = "NMI")
+# cl_agreement(cons_1, cons_3,method = "J")
+
+               
+    write_csv(tibble(Cluster = clusters, feature_type = names(clusters)), file = paste0(data_path,"MDD_multiomics_run7_clusters.csv"))
+  }
+
+######temporary comparison of two final consensus clusterings
+    run1_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run1_clusters.csv")) 
+    run2_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run2_clusters.csv")) 
+    run3_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run3_clusters.csv")) 
+    run4_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run4_clusters.csv")) 
+    run5_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run5_clusters.csv")) 
+    run6_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run6_clusters.csv")) 
+    run7_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run7_clusters.csv")) 
+
+
+    cl_table <- table(run6_cluster_df$Cluster, run7_cluster_df$Cluster)
+    cl_table
+    caret::confusionMatrix(cl_table)
+
+######
 #Add the cluster assignements to the data
-combined18_features_data_ann <-  tibble(feature_type = names(clusters),
-                                      Cluster = clusters) %>%
-  right_join(combined18_features_data, by = "feature_type") %>%
+multiomics_data_ann <-  tibble(feature_type = names(clusters),
+                               Cluster = as.character(clusters)) %>%
+  right_join(multiomics_data, by = "feature_type") %>%
   mutate(Cluster = factor(Cluster, ordered = TRUE))
 
-combined18_features_ann <- combined18_features_data_ann %>%
+multiomics_ann <- multiomics_data_ann %>%
   select(Cluster, Type, Set) %>%
   as.data.frame()
 
-#Create a matrix and heatmap of the mean combined18 values
-combined18_features_data_mean <- combined18_features_data_ann %>%
+#Create a matrix and heatmap of the mean multiomics values
+multiomics_data_mean <- multiomics_data_ann %>%
   group_by(Cluster) %>%
   summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
 
-combined18_features_count <- combined18_features_data_ann %>%
-  group_by(Cluster) %>%
-  count()
+multiomics_count <- multiomics_data_ann %>%
+  dplyr::count(Cluster) 
 
-combined18_features_data_mean_dm <- combined18_features_data_mean %>%
+multiomics_data_mean_dm <- multiomics_data_mean %>%
   select(-Cluster) %>%
   as.matrix()
-rownames(combined18_features_data_mean_dm) <- paste0("Module_",combined18_features_data_mean$Cluster,"_", combined18_features_count$n)
+rownames(multiomics_data_mean_dm) <- paste0("Module_",multiomics_data_mean$Cluster,"_", multiomics_count$n)
 
 #Make heatmap with annotations
-haRow_combined18 <- HeatmapAnnotation(df = combined18_features_ann,
+haRow_multiomics <- HeatmapAnnotation(df = multiomics_ann,
                                     which = "row",
                                     col = list(Cluster = factor(cluster_cols, levels = cluster_cols, ordered = TRUE),
                                                Type = assay_cols,
                                                Set = c("shared" = "black", ligand_cols)))
 
-hm_combined18 <- Heatmap(combined18_features_dm,
+hm_multiomics <- Heatmap(multiomics_data_dm,
                        name = "lfc rr",
-                       column_title = "combined18 features",
+                       column_title = "Multiomics features",
                        column_title_gp = gpar(fontsize = 12),
                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
                        cluster_rows = FALSE,
                        cluster_row_slices = FALSE, 
                        cluster_columns = FALSE,
-                       row_split = combined18_features_ann$Cluster,
+                       row_split = multiomics_ann$Cluster,
                        row_gap = unit(2, "mm"),
                        row_title = " ",
                        show_row_names = FALSE,
                        row_names_gp = gpar(fontsize = 8),
                        column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_combined18,
+                       left_annotation = haRow_multiomics,
                        use_raster = FALSE)
-hm_combined18
+hm_multiomics
 
-hm_combined18_mean <- Heatmap(combined18_features_data_mean_dm,
+hm_multiomics_mean <- Heatmap(multiomics_data_mean_dm,
                             name = "lfc ",
-                            column_title = "combined18 cluster means",
+                            column_title = "Multiomics k=18 cluster means",
                             column_title_gp = gpar(fontsize = 12),
                             col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
                             cluster_rows = FALSE,
@@ -239,12 +265,10 @@ hm_combined18_mean <- Heatmap(combined18_features_data_mean_dm,
                             row_names_gp = gpar(fontsize = 8),
                             column_names_gp = gpar(fontsize = 10),
                             use_raster = FALSE)
-hm_combined18_mean
+hm_multiomics_mean
 
 #find correlations between the modules and show cut to combine
-# #Modules only set
-# if_module_dm_reduced <- if_module_dm[,str_detect(colnames(if_module_dm),"Module")]
-cor_dm <- cor(t(combined18_features_data_mean_dm),  method = "pearson")
+cor_dm <- cor(t(multiomics_data_mean_dm),  method = "pearson")
 hr = hclust(dist(cor_dm))
 clusters = dendextend::cutree(hr, k = 14)
 ##Adding cuttree
@@ -258,109 +282,108 @@ cor_hm <- Heatmap(cor_dm,
 cor_hm
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined18_module_module_correlations_reduced.pdf",
+  pdf("../plots/MDD_multiomics_module_module_correlations_reduced.pdf",
       width = 9, height = 8)
   res <- print(cor_hm)
   res <- dev.off()
 }
 
 if(write_csvs) {
-  write.csv(cor_dm, "../tables/MDD_combined18_module_module_correlations.csv")
+  write.csv(cor_dm, "../tables/MDD_multiomics_module_module_correlations.csv")
 
 }
 
 #####
-#Use the combined18 features data and the cluster assignments to
-#create the combined14 dataset
+#Use the multiomics features data and the cluster assignments to
+#create the multiomics_14 dataset
 
-combined14_features_data_ann <- combined18_features_data_ann %>%
+multiomics_14_features_data_ann <- multiomics_data_ann %>%
     mutate(Cluster = as.character(Cluster),
-      Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
-                          Cluster %in% c("6","16") ~"6+16",
-                          Cluster %in% c("8", "17") ~"8+17",
-                          Cluster %in% c("10","15") ~"10+15",
+      Cluster = case_when(Cluster %in% c("1","8") ~"1+8",
+                          Cluster %in% c("4","17") ~"4+17",
+                          Cluster %in% c("3", "5") ~"3+5",
+                          Cluster %in% c("6","14") ~"6+14",
                                TRUE ~Cluster),
-      Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
+      Cluster = factor(Cluster, levels = multiomics_14_clusters, ordered = TRUE)) %>%
   as.data.frame()
 
 #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
-combined14_features_data <- combined14_features_data_ann %>%
+multiomics_14_features_data <- multiomics_14_features_data_ann %>%
   select(-Cluster)
 
 #create a numeric matrix with feature row names
-combined14_features_dm <- combined14_features_data %>%
+multiomics_14_features_dm <- multiomics_14_features_data %>%
   select(all_of(condition_order)) %>%
   as.matrix() 
-rownames(combined14_features_dm) <- combined14_features_data$feature_type
-combined14_features_dm <- combined14_features_dm[!is.nan(combined14_features_dm[,1]),]
+rownames(multiomics_14_features_dm) <- multiomics_14_features_data$feature_type
+multiomics_14_features_dm <- multiomics_14_features_dm[!is.nan(multiomics_14_features_dm[,1]),]
 
-combined14_features_ann <- combined14_features_data_ann %>%
+multiomics_14_features_ann <- multiomics_14_features_data_ann %>%
   select(Cluster, Type, Set) %>%
   as.data.frame()
 
 #Create a matrix and heatmap of the mean combined18 values
-combined14_features_data_mean <- combined14_features_data_ann %>%
+multiomics_14_features_data_mean <- multiomics_14_features_data_ann %>%
   group_by(Cluster) %>%
   summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
 
-combined14_features_count <- combined14_features_data_ann %>%
+multiomics_14_features_count <- multiomics_14_features_data_ann %>%
   group_by(Cluster) %>%
-  count()
+  dplyr::count()
 
-combined14_features_data_mean_dm <- combined14_features_data_mean %>%
+multiomics_14_features_data_mean_dm <- multiomics_14_features_data_mean %>%
   select(-Cluster) %>%
   as.matrix()
-# rownames(combined14_features_data_mean_dm) <- paste0("Module_",combined14_features_data_mean$Cluster,"_", combined14_features_count$n)
-rownames(combined14_features_data_mean_dm) <-combined14_features_data_mean$Cluster
+rownames(multiomics_14_features_data_mean_dm) <-multiomics_14_features_data_mean$Cluster
 
 #Make heatmap with annotations
-haRow_combined14 <- HeatmapAnnotation(df = combined14_features_ann,
+haRow_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_features_ann,
                                     which = "row",
                                     col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
                                                Type = assay_cols,
                                                Set = c("shared" = "white", ligand_cols)))
 
-hm_combined14 <- Heatmap(combined14_features_dm,
+hm_multiomics_14 <- Heatmap(multiomics_14_features_dm,
                        name = "lfc rr",
-                       column_title = "combined14 features",
+                       column_title = "multiomics_14 features",
                        column_title_gp = gpar(fontsize = 12),
                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
                        cluster_rows = FALSE,
                        cluster_row_slices = FALSE, 
                        cluster_columns = FALSE,
-                       row_split = combined14_features_ann$Cluster,
+                       row_split = multiomics_14_features_ann$Cluster,
                        row_gap = unit(2, "mm"),
                        row_title = " ",
                        show_row_names = FALSE,
                        row_names_gp = gpar(fontsize = 8),
                        column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_combined14,
+                       left_annotation = haRow_multiomics_14,
                        use_raster = FALSE)
-hm_combined14
+hm_multiomics_14
 
-###combined14 heatmap with ligand column annotations, RPPA and motif callouts
-  callouts <- read_csv("../integrated_analysis/Data/MDD_combined14_noRNAseq-lh.csv") %>%
+###multiomics_14 heatmap with ligand column annotations, RPPA and motif callouts
+  callouts <- read_csv(paste0(data_path, "MDD_multiomics_heatmap_callouts.csv")) %>%
     filter(selected == "x")
 
   #Make heatmap with annotations
-col_annotations <- tibble(condition = colnames(combined14_features_dm)) %>%
+col_annotations <- tibble(condition = colnames(multiomics_14_features_dm)) %>%
   mutate(ligand = str_remove(condition, "_.*")) %>%
   select(ligand) %>%
   as.data.frame()
 
-haCol_combined14 <- HeatmapAnnotation(df = col_annotations,
+haCol_multiomics_14 <- HeatmapAnnotation(df = col_annotations,
                                     which = "column",
                                     col = list(ligand = factor(ligand_cols, levels = ligand_cols, ordered = TRUE)))
 
 # #Remove all RNAseq, cycIF, GCP rownames to display only RPPA and motifs
-# haRow_combined14 <- HeatmapAnnotation(df = combined14_features_ann,
+# haRow_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_features_ann,
 #                                     which = "row",
 #                                     col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
 #                                                Type = assay_cols,
 #                                                Set = c("shared" = "white", ligand_cols)))
 #locate RPPA, motifs, cycIF and GCP, assign unique colors
-df <- combined14_features_data_ann %>%
+df <- multiomics_14_features_data_ann %>%
   #filter(!Type == "RNAseq") %>%
   mutate(Color = case_when(Type == "RPPA" ~ "#1F78B4",
                            Type == "motifs" ~ "#A6CEE3",
@@ -372,9 +395,6 @@ df <- combined14_features_data_ann %>%
 
 RPPA_motif_rows_right <- which(df$feature_type %in% callouts$feature_type)
 
-# RPPA_motif_rows_left <- which((df$Type %in% c("RPPA", "motifs", "GCP") | str_detect(df$feature, "_int_")) & df$Cluster %in% c("1", "3+4", "6+16", "8+17", "10+15", "12", "14"))
-#RPPA_motif_rows_right <- setdiff(RPPA_motif_rows, RPPA_motif_rows_left)
-
 label_colors <- df$Color[RPPA_motif_rows_right]
 names(label_colors) <- df$feature[RPPA_motif_rows_right]
 
@@ -382,26 +402,17 @@ haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
                                    labels = df$feature[RPPA_motif_rows_right],
                                    labels_gp = gpar(fontsize = 4,
                                                     col = label_colors)))
-#   
-# label_colors <- df$Color[RPPA_motif_rows_left]
-# names(label_colors) <- df$feature[RPPA_motif_rows_left]
-# 
-# haLeft = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_left,
-#                                        side = "left",
-#                                    labels = df$feature[RPPA_motif_rows_left],
-#                                    labels_gp = gpar(fontsize = 4,
-#                                                     col = label_colors)))
 
-hm_combined14_callouts <- Heatmap(combined14_features_dm,
+hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        name = "lfc rr",
-                       column_title = "combined14 features",
+                       column_title = "multiomics_14 features",
                        column_title_gp = gpar(fontsize = 6),
-                       width = ncol(combined14_features_dm)*unit(4, "mm"),
+                       width = ncol(multiomics_14_features_dm)*unit(4, "mm"),
                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
                        cluster_rows = FALSE,
                        cluster_row_slices = FALSE, 
                        cluster_columns = FALSE,
-                       row_split = combined14_features_ann$Cluster,
+                       row_split = multiomics_14_features_ann$Cluster,
                        row_gap = unit(3, "mm"),
                        row_title = " ",
                        show_row_names = FALSE,
@@ -409,19 +420,19 @@ hm_combined14_callouts <- Heatmap(combined14_features_dm,
                        column_names_gp = gpar(fontsize = 6),
                      # left_annotation = haLeft,
                        right_annotation = haRight,
-                       top_annotation = haCol_combined14,
+                       top_annotation = haCol_multiomics_14,
                        use_raster = FALSE)
-hm_combined14_callouts
+hm_multiomics_14_callouts
 
 if(create_pdfs){
-  pdf("../plots/MDD_integrated_combined14_callouts_heatmap.pdf",height = 10) 
-  draw(hm_combined14_callouts)
+  pdf("../plots/MDD_integrated_multiomics_14_callouts_heatmap.pdf",height = 10) 
+  draw(hm_multiomics_14_callouts)
   res <- dev.off()
 } 
 
-hm_combined14_mean <- Heatmap(combined14_features_data_mean_dm,
+hm_multiomics_14_mean <- Heatmap(multiomics_14_features_data_mean_dm,
                               name = "lfc ",
-                              column_title = "combined14 cluster means",
+                              column_title = "multiomics_14 cluster means",
                               column_title_gp = gpar(fontsize = 12),
                               col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
                               cluster_rows = FALSE,
@@ -434,11 +445,11 @@ hm_combined14_mean <- Heatmap(combined14_features_data_mean_dm,
                               row_names_gp = gpar(fontsize = 12),
                               column_names_gp = gpar(fontsize = 10),
                               use_raster = FALSE)
-draw(hm_combined14_mean, heatmap_legend_side = "left")
+draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
 mean_highlight_thresh <- 0.5
-hm_combined14_mean_obj <- Heatmap(combined14_features_data_mean_dm,
+hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_features_data_mean_dm,
                             name = "lfc ",
-                            column_title = "combined14 cluster means",
+                            column_title = "multiomics_14 cluster means",
                             column_title_gp = gpar(fontsize = 12),
                             col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
                             cluster_rows = FALSE,
@@ -449,23 +460,23 @@ hm_combined14_mean_obj <- Heatmap(combined14_features_data_mean_dm,
                             row_names_gp = gpar(fontsize = 8),
                             column_names_gp = gpar(fontsize = 10),
                             cell_fun = function(j, i, x, y, width, height, fill) {
-        if(abs(combined14_features_data_mean_dm[i, j]) > mean_highlight_thresh)
-            grid.text(sprintf("%.1f", combined14_features_data_mean_dm[i, j]), x, y, gp = gpar(fontsize = 12))},
+        if(abs(multiomics_14_features_data_mean_dm[i, j]) > mean_highlight_thresh)
+            grid.text(sprintf("%.1f", multiomics_14_features_data_mean_dm[i, j]), x, y, gp = gpar(fontsize = 12))},
                             use_raster = FALSE)
-hm_combined14_mean <- draw(hm_combined14_mean_obj)
-combined14_cluster_order <- row_order(hm_combined14_mean)
+hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
+multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
 
 #highlight cells with values greater than abs(mean_highlight_thresh
 
 
-#Order the combined14 heatmap by the clustering of the mean values
-#reorder the levels in combined14_features ann that are used in  row_split
-# dm_ordered <- combined14_features_data_ann %>%
-#   mutate(Cluster = fct_relevel(Cluster, (rownames(combined14_features_data_mean_dm)[combined14_cluster_order])))
+#Order the multiomics_14 heatmap by the clustering of the mean values
+#reorder the levels in multiomics_14_features ann that are used in  row_split
+# dm_ordered <- multiomics_14_features_data_ann %>%
+#   mutate(Cluster = fct_relevel(Cluster, (rownames(multiomics_14_features_data_mean_dm)[multiomics_14_cluster_order])))
 # 
-# hm_combined14_ordered <- Heatmap(combined14_features_dm,
+# hm_multiomics_14_ordered <- Heatmap(multiomics_14_features_dm,
 #                        name = "lfc rr",
-#                        column_title = "combined14 features",
+#                        column_title = "multiomics_14 features",
 #                        column_title_gp = gpar(fontsize = 12),
 #                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
 #                        cluster_rows = FALSE,
@@ -477,189 +488,79 @@ combined14_cluster_order <- row_order(hm_combined14_mean)
 #                        show_row_names = FALSE,
 #                        row_names_gp = gpar(fontsize = 8),
 #                        column_names_gp = gpar(fontsize = 10),
-#           #             left_annotation = haRow_combined14,
+#           #             left_annotation = haRow_multiomics_14,
 #                        use_raster = FALSE)
-# hm_combined14_ordered
+# hm_multiomics_14_ordered
 #####
 
 #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
 #Remove RNAseq and label rows
-combined14_noRNA_features_data <- combined14_features_data_ann %>%
+multiomics_14_noRNA_features_data <- multiomics_14_features_data_ann %>%
   select(-Cluster) %>%
   filter(!Type == "RNAseq")
 
 #create a numeric matrix with feature row names
-combined14_noRNA_features_dm <- combined14_noRNA_features_data %>%
+multiomics_14_noRNA_features_dm <- multiomics_14_noRNA_features_data %>%
   select(all_of(condition_order)) %>%
   as.matrix() 
-rownames(combined14_noRNA_features_dm) <- combined14_noRNA_features_data$feature_type
-combined14_noRNA_features_dm <- combined14_noRNA_features_dm[!is.nan(combined14_noRNA_features_dm[,1]),]
+rownames(multiomics_14_noRNA_features_dm) <- multiomics_14_noRNA_features_data$feature_type
+multiomics_14_noRNA_features_dm <- multiomics_14_noRNA_features_dm[!is.nan(multiomics_14_noRNA_features_dm[,1]),]
 
-combined14_noRNA_features_ann <- combined14_features_data_ann %>%
+multiomics_14_noRNA_features_ann <- multiomics_14_features_data_ann %>%
   select(Cluster, Type, Set)  %>%
   filter(!Type == "RNAseq")%>%
   as.data.frame()
 
 if(write_csvs){
-  df <- combined14_features_data_ann %>%
+  df <- multiomics_14_features_data_ann %>%
   filter(!Type == "RNAseq")
-  res <- write_csv(df, "../tables/MDD_combined14_noRNAseq.csv")
-    res <- write_csv(combined14_features_data_mean, "../tables/MDD_combined14_mean.csv")
+  res <- write_csv(df, "../tables/MDD_multiomics_14_noRNAseq.csv")
+    res <- write_csv(multiomics_14_features_data_mean, "../tables/MDD_multiomics_14_mean.csv")
 }
 #Make heatmap with annotations
-haRow_noRNA_combined14 <- HeatmapAnnotation(df = combined14_noRNA_features_ann,
+haRow_noRNA_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_noRNA_features_ann,
                                     which = "row",
                                     col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
                                                Type = assay_cols,
                                                Set = c("shared" = "black", ligand_cols)))
 #####
-hm_combined14_noRNA <- Heatmap(combined14_noRNA_features_dm,
+hm_multiomics_14_noRNA <- Heatmap(multiomics_14_noRNA_features_dm,
                        name = "lfc rr",
-                       column_title = "combined14 features, no RNAseq",
+                       column_title = "multiomics_14 features, no RNAseq",
                        column_title_gp = gpar(fontsize = 12),
                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
                        cluster_rows = FALSE,
                        cluster_row_slices = FALSE, 
                        cluster_columns = FALSE,
-                       row_split = combined14_noRNA_features_ann$Cluster,
+                       row_split = multiomics_14_noRNA_features_ann$Cluster,
                        row_gap = unit(2, "mm"),
                        row_title = " ",
                        show_row_names = TRUE,
                        row_names_gp = gpar(fontsize = 2.5),
                        column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_noRNA_combined14,
+                       left_annotation = haRow_noRNA_multiomics_14,
                        use_raster = FALSE)
-hm_combined14_noRNA
+hm_multiomics_14_noRNA
 
 #####
 if(create_pdfs){
   pdf("../plots/MDD_integrated_rr_combined_heatmaps.pdf",height = 10) 
   draw(hm_combined18)
   draw(hm_combined18_mean)
-  draw(hm_combined14)
-  draw(hm_combined14_callouts)
-  draw(hm_combined14_mean)
-  draw(hm_combined14_noRNA)
+  draw(hm_multiomics_14)
+  draw(hm_multiomics_14_callouts)
+  draw(hm_multiomics_14_mean)
+  draw(hm_multiomics_14_noRNA)
   res <- dev.off()
 } 
 
 if(create_pdfs){
-  pdf("../plots/MDD_integrated_combined14_mean_heatmap.pdf",height = 8, width = 5) 
-  draw(hm_combined14_mean, heatmap_legend_side = "left")
+  pdf("../plots/MDD_integrated_multiomics_14_mean_heatmap.pdf",height = 8, width = 5) 
+  draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
   res <- dev.off()
 } 
-# 
-# hm_combined18_mean <- Heatmap(combined18_features_data_mean_dm,
-#                name = "lfc ",
-#                column_title = "combined18 cluster means",
-#                column_title_gp = gpar(fontsize = 12),
-#                col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-#                cluster_rows = TRUE,
-#                cluster_row_slices = FALSE,
-#                cluster_columns = FALSE,
-#                row_gap = unit(2, "mm"),
-#                row_title = " ",
-#                show_row_names = TRUE,
-#                row_names_gp = gpar(fontsize = 8),
-#                column_names_gp = gpar(fontsize = 10),
-#                use_raster = FALSE)
 
-#######
-#Shared features
-
-#Create data and metadata matrices and annotations
-#cluster and order by cluster value
-# # 
-# # shared_features_dm <- shared_features_data %>%
-# #   select(all_of(condition_order)) %>%
-# #   as.matrix() 
-# # 
-# # rownames(shared_features_dm) <- shared_features_data$feature_type
-# # shared_features_dm <- shared_features_dm[!is.nan(shared_features_dm[,1]),]
-# # 
-# # #cluster shared matrix
-# # if(cluster_method == "kmeans"){
-# #   #seed the kmeans clustering with a fixed, random set of points
-# # set.seed(42)
-# # centers <- shared_features_dm[sample(1:nrow(shared_features_dm), size = shared_clust_num, replace = FALSE),]
-# # clusters <- kmeans(x = shared_features_dm, iter.max = 20, centers = centers)$cluster
-# # } else if(cluster_method == "HA") {
-# #   clust_obj <- hclust(dist(shared_features_dm))
-# #   clusters <- cutree(clust_obj, k = shared_clust_num)
-# # } else if(cluster_method == "pam") {
-# #    set.seed(42)
-# # medoids <- sample(1:nrow(shared_features_dm), size = shared_clust_num, replace = FALSE)
-# #   clusters  <- pam(x = shared_features_dm, k = shared_clust_num, medoids = medoids, cluster.only=TRUE, pamonce = 5)
-# # } else stop("unsupported cluster method chosen")
-# # 
-# # shared_features_data_ann <-tibble(feature_type = names(clusters),
-# #                  Cluster = clusters) %>%
-# #   right_join(shared_features_data, by = "feature_type") %>%
-# #   mutate(Cluster = factor(Cluster, levels = 1:shared_clust_num, ordered = TRUE))
-# # 
-# # shared_features_ann <-shared_features_data_ann %>%
-# #     select(Cluster, Type) %>%
-# #   as.data.frame()
-# # 
-# # haRow_shared <- HeatmapAnnotation(df = shared_features_ann,
-# #                            which = "row",
-# #                            col = list(Cluster = factor(cluster_cols, levels = cluster_cols, ordered = TRUE),
-# #                                       Type = assay_cols))
-# # 
-# # hm_shared <- Heatmap(shared_features_dm,
-# #                name = "lfc rr",
-# #                column_title = "Shared features",
-# #                column_title_gp = gpar(fontsize = 12),
-# #                col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-# #                cluster_rows = FALSE,
-# #                cluster_row_slices = TRUE, 
-# #                cluster_columns = FALSE,
-# #                row_split = shared_features_ann$Cluster,
-# #                row_gap = unit(2, "mm"),
-# #                row_title = " ",
-# #                show_row_names = FALSE,
-# #                row_names_gp = gpar(fontsize = 8),
-# #                column_names_gp = gpar(fontsize = 10),
-# #                left_annotation = haRow_shared,
-# #                use_raster = FALSE)
-# # hm_shared
-# # if(create_pdfs){
-# #   pdf("../plots/MDD_integrated_rr_shared_heatmap.pdf") 
-# #   draw(hm_shared)
-# #   res <- dev.off()
-# # } 
-# 
-# #Create a matrix and heatmap of the mean shared cluster values
-#  shared_features_data_mean <- shared_features_data_ann %>%
-#   group_by(Cluster) %>%
-#   summarise(across(.cols = matches("_24|48"), .fns = mean))
-# 
-#   shared_features_count <- shared_features_data_ann %>%
-#   group_by(Cluster) %>%
-#  count()
-#   
-# shared_features_data_mean_dm <- shared_features_data_mean %>%
-#   select(-Cluster) %>%
-#   as.matrix()
-# rownames(shared_features_data_mean_dm) <- paste0("Module_",shared_features_data_mean$Cluster,"_", shared_features_count$n)
-# 
-# hm_shared_mean <- Heatmap(shared_features_data_mean_dm,
-#                name = "lfc ",
-#                column_title = "Shared cluster means",
-#                column_title_gp = gpar(fontsize = 12),
-#                col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-#                cluster_rows = TRUE,
-#                cluster_row_slices = FALSE,
-#                cluster_columns = FALSE,
-#                row_gap = unit(2, "mm"),
-#                row_title = " ",
-#                show_row_names = TRUE,
-#                row_names_gp = gpar(fontsize = 8),
-#                column_names_gp = gpar(fontsize = 10),
-#                use_raster = FALSE)
-
-# Heatmap of ligand-specific cycIF, RPPA, GCP features: plotted with all timepoints and sorted by ligand, direction, type. Annotate with key call-outs: EGF=FoxM1; IFNG=E-cadherin, IRF1, cycIF-stat1-nuc-mean, pdl1; OSM=Myt1, TAZ, Connexin-43, Stat3-pY705, IGFRb, P-cadherin; TGFB=cycIFp21(ask Sean about which compartment), Gab2, b-Actin, Chk2-pT68; HGF=eEF2K
 
 ```
 
@@ -681,7 +582,7 @@ selectDerivedFeature <- function(df){
 return(res)
 }
 
-module_features <- combined18_features_data_ann %>%
+module_features <- multiomics_data_ann %>%
   arrange(Cluster, Type) %>%
   mutate(Cluster = paste0("module_", Cluster),
          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
@@ -690,18 +591,18 @@ module_features <- combined18_features_data_ann %>%
 res <- write_xlsx(module_features,
                   path = "../tables/MDD_int_rr_combined18_tables.xlsx")
 
-combined14_features <- combined14_features_data_ann %>%
+multiomics_14_features <- multiomics_14_features_data_ann %>%
   arrange(Cluster, Type) %>%
   mutate(Cluster = paste0("module_", Cluster),
          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
   split(.$Cluster) 
 
-res <- write_xlsx(combined14_features,
-                  path = "../tables/MDD_int_rr_combined14_tables.xlsx")
+res <- write_xlsx(multiomics_14_features,
+                  path = "../tables/MDD_int_rr_multiomics_14_tables.xlsx")
 
 ##### Randomized cluster assignments for null set analysis
-module_features_null <- combined18_features_data_ann %>%
-    mutate(Cluster = Cluster[sample(nrow(combined18_features_data_ann))]) %>%
+module_features_null <- multiomics_data_ann %>%
+    mutate(Cluster = Cluster[sample(nrow(multiomics_data_ann))]) %>%
   arrange(Cluster, Type) %>%
   mutate(Cluster = paste0("module_", Cluster),
          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
@@ -728,7 +629,7 @@ module_features <- unique_features_data %>%
 res <- write_xlsx(module_features,
                   path = "../tables/MDD_int_rr_unique_tables.xlsx")
 
-res <- write_csv(combined14_features_data_mean, "../tables/MDD_combined14_mean.csv")
+res <- write_csv(multiomics_14_features_data_mean, "../tables/MDD_multiomics_14_mean.csv")
 
 ```
 
@@ -1270,25 +1171,25 @@ if(create_pdfs){
 #Generate a 2d scatterplot of the UMAP dimensions and color by clusters, assay type
 
 #Create annotation values
-dm <- combined14_features_data_ann %>%
+dm <- multiomics_14_features_data_ann %>%
   dplyr::select(-feature, -Cluster, -Type, -feature_type, -Set) %>%
   as.matrix()
-rownames(dm) <- combined14_features_data_ann$feature_type
+rownames(dm) <- multiomics_14_features_data_ann$feature_type
 
 custom_settings = umap.defaults
 custom_settings$random_state <- 42
 custom_settings$n_epochs = 500
 custom_settings$n_neighbors = 25
 
-if(file.exists(paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP.rda"))){
-  load(paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP.rda"))
+if(file.exists(paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP.rda"))){
+  load(paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP.rda"))
 } else {
 df_UMAP <- umap(dm, config = custom_settings, na.rm = TRUE)$layout %>%
   data.frame(feature_type = rownames(dm)) %>%
   rename(UMAP_1 = X1,
          UMAP_2 = X2) %>%
-  left_join(combined14_features_data_ann, by = "feature_type") 
-save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP.rda"))
+  left_join(multiomics_14_features_data_ann, by = "feature_type") 
+save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP.rda"))
 }
 
   p <- ggplot(df_UMAP, aes(x = UMAP_1,
@@ -1296,7 +1197,7 @@ save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_combi
                            colour = factor(Cluster))) +
     geom_point(size = 1, alpha = .6, shape = 16) +
     scale_color_manual(values = cluster14_cols) +
-    labs(title = paste("UMAP embedding colored by cluster, combined14"),
+    labs(title = paste("UMAP embedding colored by cluster, multiomics_14"),
          colour = "Cluster") +
     guides(colour = guide_legend(override.aes = list(alpha = 1, size = 4))) +
     theme_bw()+
@@ -1310,13 +1211,13 @@ save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_combi
   p
   
   if(create_pdfs) {
-    pdf("../plots/MDD_combined14_umap_main.pdf")    
+    pdf("../plots/MDD_multiomics_14_umap_main.pdf")    
     print(p)
     res <- dev.off()
   } 
 ```
 
-There are `r dim(dm)[1]` dots in the 2d UMAP that represent the significant differentially expressed features relative to T0 in the combined14-features integrated matrix.  
+There are `r dim(dm)[1]` dots in the 2d UMAP that represent the significant differentially expressed features relative to T0 in the multiomics_14-features integrated matrix.  
 
 
 ```{r UMAPAnalysis2, fig.width=7.5, fig.height=4}
@@ -1325,7 +1226,7 @@ p <- ggplot(data = df_UMAP[df_UMAP$Type=="RNA",], aes(x = UMAP_1,
                                                       colour = factor(Type))) +
   geom_point(size = .8, alpha = .6) +
   scale_colour_manual(values = assay_cols)+
-  labs(title = paste("UMAP embedding colored by assay, combined14"),
+  labs(title = paste("UMAP embedding colored by assay, multiomics_14"),
        colour = "Assay") +
   guides(colour = guide_legend(override.aes = list(alpha = 1, size = 4))) +
   theme_bw()+
@@ -1340,7 +1241,7 @@ p <- p + geom_point(data = df_UMAP[!df_UMAP$Type=="RNA",],size = .8, alpha = .8)
 p
 
 if(create_pdfs) {
-  pdf("../plots/MDD_ligands_combined14_umap_type.pdf") 
+  pdf("../plots/MDD_ligands_multiomics_14_umap_type.pdf") 
       print(p)
   res <- dev.off()
 }
@@ -1383,7 +1284,7 @@ p_list <- lapply(unique(df_UMAP$Type), function(assay){
 res <- map(p_list, print)
 
 if(create_pdfs) {
-  pdf("../plots/MDD_ligands_combined14_umap_type_highlights.pdf") 
+  pdf("../plots/MDD_ligands_multiomics_14_umap_type_highlights.pdf") 
   res <- map(p_list, print)
   res <- dev.off()
 }
@@ -1434,17 +1335,17 @@ p_list <- lapply(df_UMAP_conditions, function(condition){
 })
 res <- map(p_list, print)
 if(create_pdfs) {
-  pdf("../plots/MDD_integrated_combined14_umap_by_condition.pdf")
+  pdf("../plots/MDD_integrated_multiomics_14_umap_by_condition.pdf")
   res <- map(p_list, print)
   res <- dev.off()
 }
 
 #Now create a version of RNAseq features only
-dm <- combined14_features_data_ann %>%
+dm <- multiomics_14_features_data_ann %>%
   filter(Type == "RNAseq") %>%
   dplyr::select(-feature, -Cluster, -Type, -feature_type, -Set) %>%
   as.matrix()
-rownames(dm) <- combined14_features_data_ann %>%
+rownames(dm) <- multiomics_14_features_data_ann %>%
     filter(Type == "RNAseq") %>%
   pull(feature_type)
 
@@ -1453,15 +1354,15 @@ custom_settings$random_state <- 42
 custom_settings$n_epochs = 500
 custom_settings$n_neighbors = 25
 
-if(file.exists(paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP_RNAseq.rda"))){
-  load(paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP_RNAseq.rda"))
+if(file.exists(paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP_RNAseq.rda"))){
+  load(paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP_RNAseq.rda"))
 } else {
 df_UMAP <- umap(dm, config = custom_settings, na.rm = TRUE)$layout %>%
   data.frame(feature_type = rownames(dm)) %>%
   rename(UMAP_1 = X1,
          UMAP_2 = X2) %>%
-  left_join(combined14_features_data_ann, by = "feature_type") 
-save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_combined14_UMAP_RNAseq.rda"))
+  left_join(multiomics_14_features_data_ann, by = "feature_type") 
+save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP_RNAseq.rda"))
 }
 
 df <- df_UMAP %>%
@@ -1505,7 +1406,7 @@ p_list <- lapply(df_UMAP_conditions, function(condition){
 })
 res <- map(p_list, print)
 if(create_pdfs) {
-  pdf("../plots/MDD_integrated_combined14_umap_RNAseq_by_condition.pdf")
+  pdf("../plots/MDD_integrated_multiomics_14_umap_RNAseq_by_condition.pdf")
   res <- map(p_list, print)
   res <- dev.off()
 }
@@ -1627,7 +1528,7 @@ df_cors_test <- df %>%
          GCP_feature = fct_inorder(GCP_feature),
          R2 = signif(R2, 3),
          p_value = signif(p_value, 3)) %>%
-  left_join(combined14_features_data_ann, by = c("GCP_feature" = "feature")) %>%
+  left_join(multiomics_14_features_data_ann, by = c("GCP_feature" = "feature")) %>%
   select(GCP_feature, Cluster, R2, p_value) %>%
   distinct()
 
@@ -1669,17 +1570,17 @@ if_dm <- if_df_migration %>%
   as.matrix()
   rownames(if_dm) <- if_df_migration$feature
   
-# combined14_features_data_mean_df <- combined14_features_data_ann %>%
+# multiomics_14_features_data_mean_df <- multiomics_14_features_data_ann %>%
 #   group_by(Cluster) %>%
 #       summarise(across(.cols = matches("_24|48"), .fns = mean)) %>%
 #     ungroup() %>%
 #   mutate(Cluster = paste0("Module_",as.integer(Cluster)))
-# combined14_features_data_mean_dm <- combined14_features_data_mean_df %>%
+# multiomics_14_features_data_mean_dm <- multiomics_14_features_data_mean_df %>%
 #   select(-Cluster) %>%
 #   as.matrix()
-# rownames(combined14_features_data_mean_dm) <- combined14_features_data_mean_df$Cluster
+# rownames(multiomics_14_features_data_mean_dm) <- multiomics_14_features_data_mean_df$Cluster
   
-if_module_dm <- rbind(combined14_features_data_mean_dm, if_dm) %>%
+if_module_dm <- rbind(multiomics_14_features_data_mean_dm, if_dm) %>%
   t
   
 cor_dm <- cor(if_module_dm, method ="pearson")
@@ -1692,7 +1593,7 @@ cor_hm <- Heatmap(cor_dm,
 cor_hm
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_IF_correlations.pdf")
+  pdf("../plots/MDD_multiomics_14_IF_correlations.pdf")
   res <- print(cor_hm)
   res <- dev.off()
 }
@@ -1709,7 +1610,7 @@ cor_hm <- Heatmap(cor_dm,
 cor_hm
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_IF_correlations_reduced.pdf",
+  pdf("../plots/MDD_multiomics_14_IF_correlations_reduced.pdf",
       width = 9, height = 8)
   res <- print(cor_hm)
   res <- dev.off()
@@ -1759,7 +1660,7 @@ p_volcano <- ggplot(module_phenotype_spearman, aes(cor_value, -log10(cor_p_value
 p_volcano
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_module_phenotype_correlations_volcano.pdf",
+  pdf("../plots/MDD_multiomics_14_module_phenotype_correlations_volcano.pdf",
       width = 6, height = 4)
   res <- print(p_volcano)
   res <- dev.off()
@@ -1773,7 +1674,7 @@ cor_hm <- Heatmap(cor_dm,
 cor_hm
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_module_phenotype_correlations_reduced.pdf",
+  pdf("../plots/MDD_multiomics_14_module_phenotype_correlations_reduced.pdf",
       width = 9, height = 8)
   res <- print(cor_hm)
   res <- dev.off()
@@ -1783,7 +1684,7 @@ if(create_pdfs) {
 # Scatterplots of module activity vs. phenotype--ie, the data underlying the heat map. We are principally interested in Module9 vs. proliferation metrics, but it would be good to have for all comparisons
 #format data DE data for cluster+condition mean vs phenotype value with
 #module~phenotype facets, color by ligand, size by time
-module_mean_data_ann <- combined14_features_data_mean %>%
+module_mean_data_ann <- multiomics_14_features_data_mean %>%
   pivot_longer(cols = -Cluster, names_to = "condition", values_to = "module_value") %>%
   mutate(ligand = str_remove(condition, "_.*"),
          time = str_remove(condition, ".*_") %>% as.integer) %>%
@@ -1838,7 +1739,7 @@ p_signif <- ggplot(df, aes(x = module_value, y = phenotype_value, color = ligand
 p_signif
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_module_phenotype_scatterplots_signif.pdf",
+  pdf("../plots/MDD_multiomics_14_module_phenotype_scatterplots_signif.pdf",
       width =8, height = 2)
   res <- print(p_signif)
   res <- dev.off()
@@ -1926,14 +1827,14 @@ p_mod8_17_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
 p_mod8_17_nsnd
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_module_phenotype_scatterplots.pdf",
+  pdf("../plots/MDD_multiomics_14_module_phenotype_scatterplots.pdf",
       width =8, height = 14)
   res <- print(p)
   res <- dev.off()
 }
 
 if(create_pdfs) {
-  pdf("../plots/MDD_combined14_module_vs_phenotypes_scatterplots.pdf")
+  pdf("../plots/MDD_multiomics_14_module_vs_phenotypes_scatterplots.pdf")
   res <- print(p_mod9_edu)
     res <- print(p_mod10_15_mcc)
    res <- print(p_mod11_mcc)
@@ -1994,8 +1895,8 @@ if(create_pdfs) {
 #   res <- dev.off()
 # } 
 
-#create a bar chart of the combined14 feature types
-df <- combined14_features_data %>%
+#create a bar chart of the multiomics_14 feature types
+df <- multiomics_14_features_data %>%
   #drop_na() %>%
   select(feature, Type) %>%
   distinct()
@@ -2004,7 +1905,7 @@ p <- ggplot(df, aes(x = Type, fill = Type)) +
   geom_bar() +
   coord_cartesian(ylim = c(0, 10000)) +
   scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "features at unique timepoints in the combined14-features MDD integrated dataset"),
+  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "features at unique timepoints in the multiomics_14-features MDD integrated dataset"),
        x ="Feature type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2019,7 +1920,7 @@ p_log <- ggplot(df, aes(x = Type, fill = Type)) +
   geom_bar() +
   scale_y_log10() +
   scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "combined14 features at unique timepoints in the MDD integrated dataset"),
+  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "multiomics_14 features at unique timepoints in the MDD integrated dataset"),
        x ="Feature type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2031,16 +1932,16 @@ p_log <- ggplot(df, aes(x = Type, fill = Type)) +
 
 p_log
 if(create_pdfs){
-  pdf("../plots/MDD_combined14_feature_type_distribution.pdf")
+  pdf("../plots/MDD_multiomics_14_feature_type_distribution.pdf")
   print(p)  
   res <- dev.off()
-  pdf("../plots/MDD_combined14_feature_type_distribution_log_scale.pdf")
+  pdf("../plots/MDD_multiomics_14_feature_type_distribution_log_scale.pdf")
   print(p_log)
   res <- dev.off()
 } 
 
-#bar chart of the combined14 shared adn ligands
-df <- combined14_features_data_ann %>%
+#bar chart of the multiomics_14 shared adn ligands
+df <- multiomics_14_features_data_ann %>%
   count(Set, Cluster) %>%
   mutate(Cluster = factor(Cluster, levels = names(cluster14_cols), ordered = TRUE),
          Set = factor(Set, levels = c(ligand_order, "shared"), ordered = TRUE))
@@ -2048,7 +1949,7 @@ df <- combined14_features_data_ann %>%
 feature_dist <- ggplot(df, aes(x = Set, y = n)) +
   geom_col() +
   scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Distribution of the",length(unique(paste0(combined14_features_data_ann$feature))), "combined14 features"),
+  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_features_data_ann$feature))), "multiomics_14 features"),
        x ="Type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2064,7 +1965,7 @@ feature_dist
 feature_dist_fill <- ggplot(df, aes(x = Set, y = n, fill = Set)) +
   geom_col() +
   scale_fill_manual(values = c(ligand_cols, "shared" = "black")) +
-  labs(title = paste("Distribution of the",length(unique(paste0(combined14_features_data_ann$feature))), "combined14 features"),
+  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_features_data_ann$feature))), "multiomics_14 features"),
        x ="Type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2078,7 +1979,7 @@ feature_dist_fill <- ggplot(df, aes(x = Set, y = n, fill = Set)) +
 feature_dist_fill
 
 if(create_pdfs){
-  pdf("../plots/MDD_integrated_combined14_cluster_feature_dist.pdf", width = 3, height = 14)
+  pdf("../plots/MDD_integrated_multiomics_14_cluster_feature_dist.pdf", width = 3, height = 14)
   print(feature_dist)
   print(feature_dist_fill)
   res <- dev.off()
@@ -2090,7 +1991,7 @@ if(write_csvs){
   res <- write_csv(df_wide, path = "../tables/MDD_integrated_feature_distribution.csv")
 }
 
-# df <- combined14_features_data_ann %>%
+# df <- multiomics_14_features_data_ann %>%
 #   pivot_longer(cols = matches("_[[:digit:]]"), names_to = "condition") %>%
 #   mutate(ligand = str_remove(condition, "_.*"))
 # p <- ggplot(df, aes(x = condition, fill = ligand)) +
@@ -2119,7 +2020,7 @@ plot_gap_custom <- function(x, dataset_name = "") {
   return(p)
 }
 
-dm <- combined18_features_data %>%
+dm <- multiomics_data %>%
     select(all_of(condition_order)) %>%
   as.matrix()
 
@@ -2139,7 +2040,7 @@ if(create_pdfs){
 }
 
 #Run gap analysis on RNAseq only  
-  dm <- combined18_features_data %>%
+  dm <- multiomics_data %>%
     filter(Type == "RNAseq") %>%
     select(all_of(condition_order)) %>%
     as.matrix()
@@ -2305,11 +2206,11 @@ if(create_pdfs){
   res <- dev.off()
 } 
 
-#combined14 cluster analysis
-p_hist <- ggplot(combined14_features_data_ann, aes(x = as.factor(Cluster), fill = Type)) +
+#multiomics_14 cluster analysis
+p_hist <- ggplot(multiomics_14_features_data_ann, aes(x = as.factor(Cluster), fill = Type)) +
   geom_bar(position = "dodge") +  
   scale_fill_manual(values = assay_cols) +
-  labs(title = "combined14 cluster analysis",
+  labs(title = "multiomics_14 cluster analysis",
        x = "Cluster",
        fill = "Assay") +
   facet_wrap(~Type, scales = "free_y") +
@@ -2327,12 +2228,12 @@ p_hist <- ggplot(combined14_features_data_ann, aes(x = as.factor(Cluster), fill 
 p_hist
 
 if(create_pdfs){
-  pdf("../plots/MDD_combined14_cluster_feature_counts.pdf", width = 5, height = 3)
+  pdf("../plots/MDD_multiomics_14_cluster_feature_counts.pdf", width = 5, height = 3)
     print(p_hist)
   res <- dev.off()
 } 
 
-df <- combined14_features_data_ann %>%
+df <- multiomics_14_features_data_ann %>%
   group_by(Type, Cluster) %>%
   count() %>%
   ungroup()
@@ -2340,7 +2241,7 @@ df <- combined14_features_data_ann %>%
 p <- ggplot(df, aes(x = n, fill = Type)) +
   geom_density() +  
   scale_fill_manual(values = assay_cols) +
-  labs(title = "combined14 cluster analysis",
+  labs(title = "multiomics_14 cluster analysis",
        x = "feature count",
        fill = "Assay") +
   facet_wrap(~Type, scales = "free") +
@@ -2363,7 +2264,7 @@ p
 # Color bars by module (as in this posted version)
 # Color bars by treatment using standard ligand colors
 ligand_facet_order <- c( "EGF", "HGF", "OSM", "BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
-df <- combined14_features_data_mean %>%
+df <- multiomics_14_features_data_mean %>%
   pivot_longer(cols = contains("_")) %>%
   mutate(ligand = str_remove(name, "_.*"),
          ligand = factor(ligand, levels = ligand_facet_order)) %>%
@@ -2409,14 +2310,14 @@ p_ligand <- ggplot(df, aes(x = Cluster, y =mean, fill = ligand))+
 p_ligand
 
 if(create_pdfs){
-  pdf("../plots/MDD_combined14_cluster_ligand_mean_bars.pdf", width = 4, height = 3)
+  pdf("../plots/MDD_multiomics_14_cluster_ligand_mean_bars.pdf", width = 4, height = 3)
   #print(p_cluster)
   print(p_ligand)
   res <- dev.off()
 } 
 
 #OSM-specific
-df <- combined14_features_data_mean %>%
+df <- multiomics_14_features_data_mean %>%
   pivot_longer(cols = contains("_")) %>%
   filter(str_detect(name, "OSM_")) %>%
   mutate(ligand = str_remove(name, "_.*")) %>%
@@ -2442,7 +2343,7 @@ OSM_mean <- ggplot(df, aes(x = Cluster, y =mean, fill = ligand))+
 OSM_mean
 
 #Module 2 only
-df <- combined14_features_data_mean %>%
+df <- multiomics_14_features_data_mean %>%
   pivot_longer(cols = contains("_")) %>%
   filter(Cluster == 2) %>%
   mutate(ligand = str_remove(name, "_.*")) %>%
@@ -2468,7 +2369,7 @@ cl2_mean <- ggplot(df, aes(x = ligand, y =mean, fill = ligand))+
 cl2_mean
 
 if(create_pdfs){
-  pdf("../plots/MDD_combined14_OSM_cl2.pdf", width = 4, height = 3)
+  pdf("../plots/MDD_multiomics_14_OSM_cl2.pdf", width = 4, height = 3)
   print(OSM_mean)
   print(cl2_mean)
   res <- dev.off()
@@ -2483,9 +2384,9 @@ if(file.exists(paste0("../integrated_analysis/MDD_RNAseq_clusters.rda"))){
     load(paste0("../integrated_analysis/MDD_RNAseq_clusters.rda"))
   } else {
     set.seed(42)
-    combined18_RNAseq <- combined18_features_dm[str_detect(rownames(combined18_features_dm), ".*_RNAseq"),]
-    medoids <- sample(1:nrow(combined18_RNAseq), size = combined_clust_num, replace = FALSE)
-    clusters  <- pam(x = combined18_RNAseq, k = combined_clust_num, medoids = medoids, cluster.only=TRUE, pamonce = 5)
+    combined18_RNAseq <- multiomics_dm[str_detect(rownames(multiomics_dm), ".*_RNAseq"),]
+    medoids <- sample(1:nrow(combined18_RNAseq), size = multiomics_clust_num, replace = FALSE)
+    clusters  <- pam(x = combined18_RNAseq, k = multiomics_clust_num, medoids = medoids, cluster.only=TRUE, pamonce = 5)
     combined18_RNAseq_data_ann <- as_tibble(combined18_RNAseq, rownames = "feature_type") %>%
       mutate(Cluster = clusters)
 
@@ -2525,12 +2426,12 @@ cor_hm <- Heatmap(cor_dm,
                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 cor_hm
 
-combined14_RNAseq_cluster_names <-c("A", "B", LETTERS[4:11], "C1","C2","C3","C4")
+multiomics_14_RNAseq_cluster_names <-c("A", "B", LETTERS[4:11], "C1","C2","C3","C4")
 
 #Use the combined18 RNAseq data and the cluster assignments to
-#create the combined14 RNAseq dataset
+#create the multiomics_14 RNAseq dataset
 
-combined14_RNAseq_features_data_ann <- combined18_RNAseq_data_ann %>%
+multiomics_14_RNAseq_features_data_ann <- combined18_RNAseq_data_ann %>%
     mutate(Cluster = as.character(Cluster),
            Cluster = case_when(Cluster == "1" ~"A",
                                Cluster %in% c("2","17") ~"C1",
@@ -2546,25 +2447,25 @@ combined14_RNAseq_features_data_ann <- combined18_RNAseq_data_ann %>%
                                Cluster == "14" ~"I",
                                Cluster == "15" ~"J",
                                Cluster == "18" ~"K"),
-      Cluster = factor(Cluster, levels = combined14_RNAseq_cluster_names, ordered = TRUE)) %>%
+      Cluster = factor(Cluster, levels = multiomics_14_RNAseq_cluster_names, ordered = TRUE)) %>%
   as.data.frame()
 
 #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
-# combined14_RNAseq_features_data <- combined14_RNAseq_features_data_ann %>%
+# multiomics_14_RNAseq_features_data <- multiomics_14_RNAseq_features_data_ann %>%
 #   select(-Cluster)
 
 # #create a numeric matrix with feature row names
-# combined14_RNAseq_features_dm <- combined14_RNAseq_features_data %>%
+# multiomics_14_RNAseq_features_dm <- multiomics_14_RNAseq_features_data %>%
 #   select(all_of(condition_order)) %>%
 #   as.matrix() 
-# rownames(combined14_RNAseq_features_dm) <- combined14_RNAseq_features_data$feature_type
-# combined14_RNAseq_features_dm <- combined14_RNAseq_features_dm[!is.nan(combined14_RNAseq_features_dm[,1]),]
+# rownames(multiomics_14_RNAseq_features_dm) <- multiomics_14_RNAseq_features_data$feature_type
+# multiomics_14_RNAseq_features_dm <- multiomics_14_RNAseq_features_dm[!is.nan(multiomics_14_RNAseq_features_dm[,1]),]
 # 
-combined14_RNAseq_clusters <- combined14_RNAseq_features_data_ann %>%
+multiomics_14_RNAseq_clusters <- multiomics_14_RNAseq_features_data_ann %>%
   select(feature_type, Cluster)
 
-df <- combined14_features_data_ann %>%
+df <- multiomics_14_features_data_ann %>%
   filter(Type == "RNAseq") %>%
   select(feature_type, Cluster) %>%
   rename(Integrated_cluster = Cluster) %>%
@@ -2582,8 +2483,8 @@ df <- combined14_features_data_ann %>%
                                         Integrated_cluster == "6+16" ~"C2",
                                         Integrated_cluster == "8+17" ~"C3",
                                         Integrated_cluster == "10+15" ~"C4"),
-         Integrated_cluster = factor(Integrated_cluster, levels = combined14_RNAseq_cluster_names, ordered = TRUE)) %>%
-  left_join(combined14_RNAseq_clusters, by = "feature_type") %>%
+         Integrated_cluster = factor(Integrated_cluster, levels = multiomics_14_RNAseq_cluster_names, ordered = TRUE)) %>%
+  left_join(multiomics_14_RNAseq_clusters, by = "feature_type") %>%
     rename(RNAseq_only_cluster = Cluster)
 
 cf_matrix <- confusionMatrix(factor(df$RNAseq_only_cluster), df$Integrated_cluster)
@@ -2596,12 +2497,12 @@ if(file.exists(paste0("../integrated_analysis/MDD_14_clusters.rda"))){
     load(paste0("../integrated_analysis/MDD_14_clusters.rda"))
   } else {
     set.seed(42)
-    medoids <- sample(1:nrow(combined18_features_dm), size = 14, replace = FALSE)
-    clusters  <- pam(x = combined18_features_dm, k = 14, medoids = medoids, cluster.only=TRUE, pamonce = 5)
-    im_14_data_ann <- as_tibble(combined18_features_dm, rownames = "feature_type") %>%
+    medoids <- sample(1:nrow(multiomics_dm), size = 14, replace = FALSE)
+    clusters  <- pam(x = multiomics_dm, k = 14, medoids = medoids, cluster.only=TRUE, pamonce = 5)
+    im_14_data_ann <- as_tibble(multiomics_dm, rownames = "feature_type") %>%
       mutate(Cluster = clusters)
     
-    combined18_RNAseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), ".*_RNAseq"),]
+    combined18_RNAseq_dm <- multiomics_dm[str_detect(rownames(multiomics_dm), ".*_RNAseq"),]
     set.seed(42)
     medoids <- sample(1:nrow(combined18_RNAseq_dm), size = 14, replace = FALSE)
     clusters  <- pam(x = combined18_RNAseq_dm, k = 14, medoids = medoids, cluster.only=TRUE, pamonce = 5)
@@ -2628,7 +2529,7 @@ left_join(im_14_RNAseq_clusters, by = "feature_type") %>%
 cf_14_matrix <- confusionMatrix(df_14$RNAseq_cluster, reference = df_14$Integrated_cluster)
 
 #14 Int clusters and 14 RNAseq clusters
-df_int14 <- combined14_features_data_ann %>%
+df_int14 <- multiomics_14_features_data_ann %>%
  select(feature_type, Cluster) %>%
   filter(str_detect(feature_type, "RNAseq")) %>%
   rename(Integrated_cluster = Cluster) %>%
@@ -2678,9 +2579,7 @@ left_join(im_14_RNAseq_clusters, by = "feature_type") %>%
     rename(RNAseq_cluster = Cluster) %>%
   mutate(Integrated_cluster = as_factor(Integrated_cluster),
          RNAseq_cluster = as_factor(RNAseq_cluster))
-#   cor_dm <- cor(t(combined18_features_data_mean_dm),  method = "pearson")
-# hr = hclust(dist(cor_dm))
-# clusters = dendextend::cutree(hr, k = 14)
+
 }
   
   
@@ -2761,7 +2660,7 @@ int_genes <- integrated_data %>%
   mutate(Cluster = str_replace(Cluster, "module_","int_")) %>%
   distinct
 
-set_genes <- combined18_features_data_ann %>%
+set_genes <- multiomics_data_ann %>%
   filter(Type == "RNAseq") %>%
   rename(symbol = feature) %>%
   select(Cluster, symbol) %>%
@@ -2799,10 +2698,10 @@ res = dev.off()
 #method -use original data assay_pk_data
 #filter to assays and features in DE data
 #T0 normalize
-#use combined14 cluster assignment in heatmap
+#use multiomics_14 cluster assignment in heatmap
 
 #need to rename cycIF intensity features to match names in T0 Norm dataset
-cluster_assignments <- combined14_features_data_ann %>%
+cluster_assignments <- multiomics_14_features_data_ann %>%
   select(Cluster, feature_type) %>%
   mutate(feature_type = case_when(str_detect(feature_type, "int_mean_") ~str_replace(feature_type,  "_.*int_mean_.*_cycIF", "_cycIF"),
                                   TRUE ~feature_type))
@@ -2811,7 +2710,7 @@ ligand_order_all_times <- paste(rep(ligand_order, each = 5), rep(c(1,4,8,24,48),
   ligand_order_all_times <- factor(ligand_order_all_times, levels = ligand_order_all_times, ordered = TRUE)
   
 #convert cycIF features to the average cell intensity values
-cycIF_combined14_features_int <- combined14_features_data_ann %>%
+cycIF_multiomics_14_features_int <- multiomics_14_features_data_ann %>%
   filter(Type == "cycIF",
          str_detect(feature, "_int_mean")) %>%
   mutate(feature = str_remove(feature, "_.*")) %>%
@@ -2822,7 +2721,7 @@ cycIF_combined14_features_int <- combined14_features_data_ann %>%
 
 #the T0 values don't map to the DE features so clusters can not be assigned
 #some cyto vs nuc are in different clusers
-combined14_features_with_cycIF_int <- c(combined14_features_data_ann$feature_type, cycIF_combined14_features_int$feature_type)
+multiomics_14_features_with_cycIF_int <- c(multiomics_14_features_data_ann$feature_type, cycIF_multiomics_14_features_int$feature_type)
   
 #reformat raw assay metadata to match T0_DE
 matched_features_types <- assay_pk_data %>%
@@ -2836,7 +2735,7 @@ matched_features_types <- assay_pk_data %>%
            feature_type =  paste0(feature, "_", Type),
            condition = paste0(ligand,"_", experimentalTimePoint)) %>%
   select(-ligand, -feature, -Type, -experimentalTimePoint) %>%
-  filter(feature_type %in% combined14_features_with_cycIF_int)
+  filter(feature_type %in% multiomics_14_features_with_cycIF_int)
 
 assay_pk_data_T0_norm <- matched_features_types %>%
   filter(condition == "ctrl_0") %>%
@@ -2897,7 +2796,7 @@ haRow_T0 <- HeatmapAnnotation(df = assay_pk_data_T0_norm_ann,
 #heatmap of all T0 norm data
 hm_T0 <- Heatmap(assay_pk_data_T0_norm_dm,
         name = "fc ",
-        column_title = "T0 Normalized, combined14 structure",
+        column_title = "T0 Normalized, multiomics_14 structure",
         column_title_gp = gpar(fontsize = 12),
         col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
         cluster_rows = FALSE,
@@ -2917,7 +2816,7 @@ hm_T0
 #heatmap of all T0 norm data
 hm_T0_24_48 <- Heatmap(assay_pk_data_T0_norm_24_48_dm,
         name = "fc ",
-        column_title = "T0 Normalized, combined14 structure, 24, 48 hour only",
+        column_title = "T0 Normalized, multiomics_14 structure, 24, 48 hour only",
         column_title_gp = gpar(fontsize = 12),
         col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")),
         cluster_rows = FALSE,
@@ -2936,7 +2835,7 @@ hm_T0_24_48
 #heatmap of mean values
 hm_T0_24_48_mean_cl <- Heatmap(assay_pk_data_T0_norm_24_48_mean_dm,
         name = "value ",
-        column_title = "T0 Normalized means, combined14 structure, clustered",
+        column_title = "T0 Normalized means, multiomics_14 structure, clustered",
         column_title_gp = gpar(fontsize = 12),
         col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
         cluster_rows = TRUE,
@@ -2952,7 +2851,7 @@ hm_T0_24_48_mean_cl
 
 hm_T0_24_48_mean_or <- Heatmap(assay_pk_data_T0_norm_24_48_mean_dm,
         name = "value ",
-        column_title = "T0 Normalized means, combined14 structure, ordered",
+        column_title = "T0 Normalized means, multiomics_14 structure, ordered",
         column_title_gp = gpar(fontsize = 12),
         col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
         cluster_rows = FALSE,
@@ -2980,7 +2879,7 @@ mean_bar_plot <- ggplot(df, aes(x = Cluster, y = value)) +
 mean_bar_plot
 
 if(create_pdfs){
-  pdf("../plots/MDD_T0_normed_in_combined14_clusters.pdf",height = 10)
+  pdf("../plots/MDD_T0_normed_in_multiomics_14_clusters.pdf",height = 10)
   draw(hm_T0)
   draw(hm_T0_24_48)
   draw(hm_T0_24_48_mean_cl)
@@ -2998,7 +2897,7 @@ module_features <- assay_pk_data_T0_norm_24_48 %>%
 res <- write_xlsx(module_features,
                   path = "../tables/MDD_T0_norm_combined18_tables.xlsx")
 
-#Cluster the T0 data according to the combined14 structure
+#Cluster the T0 data according to the multiomics_14 structure
 #and drop RNAseq
 # assay_pk_data_T0_norm14 <- assay_pk_data_T0_norm %>%
 #   select(-Cluster) %>%
@@ -3029,7 +2928,7 @@ res <- write_xlsx(module_features,
 # 
 # hm_T0_14 <- Heatmap(assay_pk_data_T0_norm14_dm,
 #         name = "fc ",
-#         column_title = "T0 Normalized, combined14 structure",
+#         column_title = "T0 Normalized, multiomics_14 structure",
 #         column_title_gp = gpar(fontsize = 12),
 #         col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")),
 #         cluster_rows = FALSE,
@@ -3070,7 +2969,7 @@ res <- write_xlsx(module_features,
 # 
 # hm_T0_norm14_mean <- Heatmap(assay_pk_data_T0_norm14_mean_dm,
 #         name = "value ",
-#         column_title = "T0 Normalized means, combined14 structure",
+#         column_title = "T0 Normalized means, multiomics_14 structure",
 #         column_title_gp = gpar(fontsize = 12),
 #         col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")),
 #         cluster_rows = TRUE,
@@ -3093,7 +2992,7 @@ res <- write_xlsx(module_features,
 # 
 # p <- ggplot(df, aes(x = Cluster, y = value)) +
 #   geom_col() +
-#   labs(title = "T0 normalized in combined14 structure",
+#   labs(title = "T0 normalized in multiomics_14 structure",
 #        subtitle = "mean values per condition and module") +
 #   theme_bw() +
 #   theme(axis.text.x = element_text(angle = 90),
@@ -3102,7 +3001,7 @@ res <- write_xlsx(module_features,
 # p
 # 
 # if(create_pdfs){
-#   pdf("../plots/MDD_T0_normed_combined14.pdf",height = 10)
+#   pdf("../plots/MDD_T0_normed_multiomics_14.pdf",height = 10)
 #   draw(hm_T0_14)
 #   draw(hm_T0_norm14_mean)
 #   print(p)
@@ -3208,7 +3107,7 @@ if(create_pdfs){
 }
 
 
-#Add to Compare T0 Normalized tab an analysis of combined14 modules and drop CTRL. Also simplify bar plots to remove gray background (Mark)
+#Add to Compare T0 Normalized tab an analysis of multiomics_14 modules and drop CTRL. Also simplify bar plots to remove gray background (Mark)
 
 ```
 
@@ -3218,9 +3117,9 @@ filter to assays and features in DE data
 T0 normalize  
 use combined18 cluster assignment in heatmap  
 
-##### T0 normalized in combined14 structure  
+##### T0 normalized in multiomics_14 structure  
 load original data  
-filter to features in the combined14 dataset  
+filter to features in the multiomics_14 dataset  
 retain 4,8, 24 and 48 hour data  
 center on ctrl_0 values  
 calculate mean of each condition for each of the 14 modules  
@@ -3234,7 +3133,7 @@ display as facetted bar graph
 
 #Ligand cross-correlation heat map with final megamatrix feature list: 24H only, 48H only, 24+48H combined. Explore scaling options. (Mark)
 
-all_data_cor <- combined18_features_data %>%
+all_data_cor <- multiomics_data %>%
   select(matches("_24|_48")) %>%
   as.matrix() %>%
   cor(method = "pearson")
@@ -3253,7 +3152,7 @@ if(write_csvs){
   path = "../tables/MDD_integrated_condition_condition_correlations.csv")
 }
 
-all_data_24_cor <- combined18_features_data %>%
+all_data_24_cor <- multiomics_data %>%
   select(matches("_24")) %>%
   as.matrix() %>%
   cor(method = "pearson")
@@ -3266,7 +3165,7 @@ cor_24_hm <- Heatmap(all_data_24_cor,
                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 cor_24_hm
 
-all_data_48_cor <- combined18_features_data %>%
+all_data_48_cor <- multiomics_data %>%
   select(matches("_48")) %>%
   as.matrix() %>%
   cor(method = "pearson")
