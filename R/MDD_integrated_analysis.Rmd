@@ -22,7 +22,25 @@ write_csvs <- FALSE
 
 ```
 
+```{r functions}
 
+create_consensus_clustering <- function(mat = multiomics_data_dm,
+                                        nbr_clusterings = 5,
+                                        nbr_consensus = 3,
+                                        clust_num = multiomics_clust_num){
+  cons_list <- lapply(seq_len(nbr_consensus), function(c) {
+    cons <- cl_ensemble(list = lapply(seq_len(nbr_clusterings), function(b) { #Create clusterings
+      medoids <- sample(nrow(mat), size = clust_num, replace = FALSE)
+      clusters  <- pam(x = mat, 
+                       k = clust_num, 
+                       medoids = medoids, 
+                       pamonce = 5)})) %>%
+      cl_consensus(method = "HE", control = list(nruns = 5))
+  }) %>%
+    cl_consensus(method = "HE", control = list(nruns = 5))
+}
+
+```
 
 ```{r setup_parameters_and_metadata}
 data_path <- "../multiomics_analysis/data/"
@@ -41,7 +59,7 @@ condition_order <- paste0(rep(ligand_order, each = length(experimentalTimePoints
 #create a named vector of color values for the Heatmap clusters
 cluster_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[c(1:12)], names = 1:12), c("13" = "#222222", "14" = "#555555", "15" = "#999999", "16" = "#AAAAAA", "17" = "#BBBBBB", "18" = "#CCCCCC", "19" = "#DDDDDD"))
 
-multiomics_14_clusters <-c("1+8", "2", "3+5", "4+17", "6+14", "7", "9", "10", "11", "12","13", "15","16", "18")
+multiomics_14_clusters <-c("1", "2", "3+14", "4", "5","6", "7+17", "8", "9+15", "10+12", "11","13","16", "18")
                           
 cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = multiomics_14_clusters[1:12]), c("16" = "#222222", "18" = "#555555"))
 
@@ -138,72 +156,71 @@ multiomics_data_dm <- multiomics_data %>%
 rownames(multiomics_data_dm) <- multiomics_data$feature_type
 multiomics_data_dm <- multiomics_data_dm[!is.nan(multiomics_data_dm[,1]),]
 
-  if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
-    cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_clusters.csv")) 
-    clusters <- cluster_df %>%
-      pull(Cluster)
-    names(clusters) <- cluster_df %>%
-      pull(feature_type)
-  } else {
-    #TODO replace this with a consensus clustering
-#     Consensus clusterings “synthesize” the information in the elements of a cluster ensemble into a single clustering, often by minimizing a criterion function measuring how dissimilar consensus candidates are from the (elements of) the ensemble (the so-called “optimization approach” to consensus clustering).
-# 
-# The most popular criterion functions are of the form L(x) = ∑ w_b d(x_b, x)^p, where d is a suitable dissimilarity measure (see cl_dissimilarity), w_b is the case weight given to element x_b of the ensemble, and p ≥ 1. If p = 1 and minimization is over all possible base clusterings, a consensus solution is called a median of the ensemble; if minimization is restricted to the elements of the ensemble, a consensus solution is called a medoid (see cl_medoid). For p = 2, we obtain least squares consensus partitions and hierarchies (generalized means). See also Gordon (1999) for more information.
-# 
-# If all elements of the ensemble are partitions, the built-in consensus methods compute consensus partitions by minimizing a criterion of the form L(x) = ∑ w_b d(x_b, x)^p over all hard or soft partitions x with a given (maximal) number k of classes. Available built-in methods are as follows.
-    nbr_clusterings <- 100
-    nbr_consensus <- 3
-    
-    create_consensus_clustering <- function(mat = multiomics_data_dm,
-                                            nbr_clusterings = 5,
-                                            nbr_consensus = 3,
-                                            clust_num = multiomics_clust_num){
-      cons_list <- lapply(seq_len(nbr_consensus), function(c) {
-        cons <- cl_ensemble(list = lapply(seq_len(nbr_clusterings), function(b) { #Create clusterings
-          medoids <- sample(1:nrow(mat), size = clust_num, replace = FALSE)
-          clusters  <- pam(x = mat, 
-                           k = clust_num, 
-                           medoids = medoids, 
-                           pamonce = 5)})) %>%
-          cl_consensus(method = "HE", control = list(nruns = 5))
-      }) %>%
-         cl_consensus(method = "HE", control = list(nruns = 5))
-    }
-cons <- create_consensus_clustering(nbr_clusterings = nbr_clusterings, nbr_consensus= nbr_consensus) 
-clusters <- cl_class_ids(cons)
-names(clusters) <- rownames(cons$.Data)
+if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
+  cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_clusters.csv")) 
+  clusters <- cluster_df %>%
+    pull(Cluster)
+  names(clusters) <- cluster_df %>%
+    pull(feature_type)
+} else {
+  #     Consensus clusterings “synthesize” the information in the elements of a cluster ensemble into a single clustering, often by minimizing a criterion function measuring how dissimilar consensus candidates are from the (elements of) the ensemble (the so-called “optimization approach” to consensus clustering).
+  # 
+  # The most popular criterion functions are of the form L(x) = ∑ w_b d(x_b, x)^p, where d is a suitable dissimilarity measure (see cl_dissimilarity), w_b is the case weight given to element x_b of the ensemble, and p ≥ 1. If p = 1 and minimization is over all possible base clusterings, a consensus solution is called a median of the ensemble; if minimization is restricted to the elements of the ensemble, a consensus solution is called a medoid (see cl_medoid). For p = 2, we obtain least squares consensus partitions and hierarchies (generalized means). See also Gordon (1999) for more information.
+  # 
+  # If all elements of the ensemble are partitions, the built-in consensus methods compute consensus partitions by minimizing a criterion of the form L(x) = ∑ w_b d(x_b, x)^p over all hard or soft partitions x with a given (maximal) number k of classes. Available built-in methods are as follows.
+  nbr_clusterings <- 100
+  nbr_consensus <- 3
+  nbr_runs <- 25
 
-# cons_2 <- create_consensus_clustering(nbr_clusterings = nbr_clusterings)
-# cons_3 <- create_consensus_clustering(nbr_clusterings = nbr_clusterings)
-# 
-# cons_cons <- cl_consensus(cl_ensemble(list(cons_1, cons_2, cons_3)), method = "HE", control = list(nruns = 5))
-# cl_agreement(cons_1, cons_2,method = "Rand")
-# cl_agreement(cons_1, cons_2,method = "NMI")
-# cl_agreement(cons_1, cons_2,method = "J")
-# cl_agreement(cons_1, cons_3,method = "Rand")
-# cl_agreement(cons_1, cons_3,method = "NMI")
-# cl_agreement(cons_1, cons_3,method = "J")
-
-               
-    write_csv(tibble(Cluster = clusters, feature_type = names(clusters)), file = paste0(data_path,"MDD_multiomics_run7_clusters.csv"))
-  }
-
-######temporary comparison of two final consensus clusterings
-    run1_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run1_clusters.csv")) 
-    run2_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run2_clusters.csv")) 
-    run3_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run3_clusters.csv")) 
-    run4_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run4_clusters.csv")) 
-    run5_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run5_clusters.csv")) 
-    run6_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run6_clusters.csv")) 
-    run7_cluster_df <- read_csv(paste0(data_path,"MDD_multiomics_run7_clusters.csv")) 
-
-
-    cl_table <- table(run6_cluster_df$Cluster, run7_cluster_df$Cluster)
-    cl_table
-    caret::confusionMatrix(cl_table)
+  set.seed(42)
+  res <- lapply(1:nbr_runs, function(x, nbr_clusterings = nbr_clusterings, nbr_consensus = nbr_consensus){
+    cons <- create_consensus_clustering(nbr_clusterings = nbr_clusterings, nbr_consensus= nbr_consensus) 
+    save(cons, file =paste0("../Data/MDD_multiomics_clstrng_run_",x,".rda"))
+  })
+  con_cons <- clue::cl_ensemble(list = lapply(1:25, function(x){
+    load(paste0("../Data/MDD_multiomics_clstrngs_",nbr_clusterings,"_nrb_cnsns_",nbr_consensus,"_run_",x,".rda"))
+    clue::as.cl_partition(cons)
+  }))
+  #calculate agreement between all possible cluster pairings
+  agrmnts <- lapply(1:(nbr_runs-1), function(x){
+    res <- lapply((x+1):nbr_runs, function(y){
+      cl_agreement(con_cons[[x]], con_cons[[y]], method = "FM")
+    }) %>%
+      unlist()
+  })
+  
+  #generate a consensus of all clustering consensuses
+  set.seed(100)
+  ce_cons <- clue::cl_consensus(con_cons, control = list(nruns = 5))
+  #Save the cluster assignments to disk
+  clusters <- cl_class_ids(ce_cons)
+  cluster_df <- tibble(Cluster = clusters,
+                       feature_type = names(clusters))
+  write_csv(cluster_df, paste0(data_path,"MDD_multiomics_clusters.csv")) 
+  
+  #Calculate the agreement between ensemble elements and the consensus clusetering
+  ags_con <- sapply(con_cons, clue::cl_agreement, y = ce_cons, method = "FM")
+  
+  
+  p <- ggplot(tibble(agreements = unlist(agrmnts)), aes(x = agreements)) +
+    geom_density() +
+    theme_bw()
+  p
+  
+  #Todo annotate figure with statistics
+  agreement_to_consensus_mean <- mean(ags_con)
+  agreement_to_consensus_sd <- sd(ags_con)
+  p <- ggplot(tibble(agreement_to_consensus = ags_con, method = "FM"), aes(x = agreement_to_consensus)) +
+    geom_density() +
+    theme_bw()
+  p
+}
+#
+#clue::cl_agreement()
+#"FM"  the index of Fowlkes and Mallows (1983), i.e., the ratio N_xy / sqrt(N_x N_y) of the number N_xy of distinct pairs of objects in the same class in both partitions and the geometric mean of the numbers N_x and N_y of distinct pairs of objects in the same class in partition x and partition y, respectively. For soft partitions, (currently) the Fowlkes-Mallows index of the corresponding nearest hard partitions is used.
 
 ######
-#Add the cluster assignements to the data
+#Add the cluster assignments to the data
 multiomics_data_ann <-  tibble(feature_type = names(clusters),
                                Cluster = as.character(clusters)) %>%
   right_join(multiomics_data, by = "feature_type") %>%
@@ -267,12 +284,11 @@ hm_multiomics_mean <- Heatmap(multiomics_data_mean_dm,
                             use_raster = FALSE)
 hm_multiomics_mean
 
-#find correlations between the modules and show cut to combine
+#find correlations between the modules and show cut to combine into 14 modules
 cor_dm <- cor(t(multiomics_data_mean_dm),  method = "pearson")
 hr = hclust(dist(cor_dm))
 clusters = dendextend::cutree(hr, k = 14)
-##Adding cuttree
-##
+
 cor_hm <- Heatmap(cor_dm,
                    name = "pearson\ncorrelation",
                   row_names_gp = gpar(fontsize = 10),
@@ -297,12 +313,14 @@ if(write_csvs) {
 #Use the multiomics features data and the cluster assignments to
 #create the multiomics_14 dataset
 
+multiomics_14_clusters <-c("1", "2", "3+14", "4", "5","6", "7+17", "8", "9+15", "10+12", "11","13","16", "18")
+                          
 multiomics_14_features_data_ann <- multiomics_data_ann %>%
     mutate(Cluster = as.character(Cluster),
-      Cluster = case_when(Cluster %in% c("1","8") ~"1+8",
-                          Cluster %in% c("4","17") ~"4+17",
-                          Cluster %in% c("3", "5") ~"3+5",
-                          Cluster %in% c("6","14") ~"6+14",
+      Cluster = case_when(Cluster %in% c("3","14") ~"3+14",
+                          Cluster %in% c("7","17") ~"7+17",
+                          Cluster %in% c("9", "15") ~"9+15",
+                          Cluster %in% c("10","12") ~"10+12",
                                TRUE ~Cluster),
       Cluster = factor(Cluster, levels = multiomics_14_clusters, ordered = TRUE)) %>%
   as.data.frame()
