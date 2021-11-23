@@ -17,7 +17,7 @@ library(clue)
 #library(UpSetR)
 
 source("../R/MDD_functions.R")
-create_pdfs <- FALSE
+create_pdfs <- TRUE
 write_csvs <- FALSE
 
 ```
@@ -395,11 +395,6 @@ haCol_multiomics_14 <- HeatmapAnnotation(df = col_annotations,
                                     col = list(ligand = factor(ligand_cols, levels = ligand_cols, ordered = TRUE)))
 
 # #Remove all RNAseq, cycIF, GCP rownames to display only RPPA and motifs
-# haRow_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_features_ann,
-#                                     which = "row",
-#                                     col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
-#                                                Type = assay_cols,
-#                                                Set = c("shared" = "white", ligand_cols)))
 #locate RPPA, motifs, cycIF and GCP, assign unique colors
 df <- multiomics_14_features_data_ann %>%
   #filter(!Type == "RNAseq") %>%
@@ -442,9 +437,47 @@ hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        use_raster = FALSE)
 hm_multiomics_14_callouts
 
+#Annotate callouts with abbreviations of the type instead of changing the color
+
+df <- multiomics_14_features_data_ann %>%
+  #filter(!Type == "RNAseq") %>%
+  mutate(feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"),
+         feature = case_when(Type == "RPPA" ~paste(feature, "(R)"),
+                             Type == "cycIF" ~paste(feature, "(C)"),
+                             Type == "motifs" ~paste(feature, "(A)"),
+                             TRUE ~ feature))
+
+RPPA_motif_rows_right <- which(df$feature_type %in% callouts$feature_type)
+
+haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
+                                   labels = df$feature[RPPA_motif_rows_right],
+                                   labels_gp = gpar(fontsize = 5)))
+
+hm_multiomics_14_callouts_type <- Heatmap(multiomics_14_features_dm,
+                       name = "lfc rr",
+                       column_title = "multiomics_14 features",
+                       column_title_gp = gpar(fontsize = 6),
+                       width = ncol(multiomics_14_features_dm)*unit(4, "mm"),
+                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+                       cluster_rows = FALSE,
+                       cluster_row_slices = FALSE, 
+                       cluster_columns = FALSE,
+                       row_split = multiomics_14_features_ann$Cluster,
+                       row_gap = unit(3, "mm"),
+                       row_title = " ",
+                       show_row_names = FALSE,
+                       row_names_gp = gpar(fontsize = 12),
+                       column_names_gp = gpar(fontsize = 6),
+                     # left_annotation = haLeft,
+                       right_annotation = haRight,
+                       top_annotation = haCol_multiomics_14,
+                       use_raster = FALSE)
+hm_multiomics_14_callouts_type
+
+###
 if(create_pdfs){
   pdf("../plots/MDD_integrated_multiomics_14_callouts_heatmap.pdf",height = 10) 
-  draw(hm_multiomics_14_callouts)
+  draw(hm_multiomics_14_callouts_type)
   res <- dev.off()
 } 
 
@@ -564,10 +597,11 @@ hm_multiomics_14_noRNA
 #####
 if(create_pdfs){
   pdf("../plots/MDD_integrated_rr_combined_heatmaps.pdf",height = 10) 
-  draw(hm_combined18)
-  draw(hm_combined18_mean)
-  draw(hm_multiomics_14)
+ # draw(hm_combined18)
+  #draw(hm_combined18_mean)
+ draw(hm_multiomics_14)
   draw(hm_multiomics_14_callouts)
+    draw(hm_multiomics_14_callouts_type)
   draw(hm_multiomics_14_mean)
   draw(hm_multiomics_14_noRNA)
   res <- dev.off()
