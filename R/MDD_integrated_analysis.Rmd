@@ -380,41 +380,25 @@ hm_multiomics_14 <- Heatmap(multiomics_14_features_dm,
                        use_raster = FALSE)
 hm_multiomics_14
 
-###multiomics_14 heatmap with ligand column annotations, RPPA and motif callouts
+###multiomics_14 heatmap with ligand column annotations, RPPA, cycIF and motif callouts
   callouts <- read_csv(paste0(data_path, "MDD_multiomics_heatmap_callouts.csv")) %>%
     filter(selected == "x")
 
-  #Make heatmap with annotations
-col_annotations <- tibble(condition = colnames(multiomics_14_features_dm)) %>%
-  mutate(ligand = str_remove(condition, "_.*")) %>%
-  select(ligand) %>%
-  as.data.frame()
+#Annotate callouts with abbreviations of the type 
 
-haCol_multiomics_14 <- HeatmapAnnotation(df = col_annotations,
-                                    which = "column",
-                                    col = list(ligand = factor(ligand_cols, levels = ligand_cols, ordered = TRUE)))
-
-# #Remove all RNAseq, cycIF, GCP rownames to display only RPPA and motifs
-#locate RPPA, motifs, cycIF and GCP, assign unique colors
 df <- multiomics_14_features_data_ann %>%
   #filter(!Type == "RNAseq") %>%
-  mutate(Color = case_when(Type == "RPPA" ~ "#1F78B4",
-                           Type == "motifs" ~ "#A6CEE3",
-                           Type == "GCP" ~ "#E31A1C",
-                           Type == "cycIF" ~ "#FB9A99",
-                           TRUE ~ ""
-                           ),
-         feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"))
+  mutate(feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"),
+         feature = case_when(Type == "RPPA" ~paste(feature, "(R)"),
+                             Type == "cycIF" ~paste(feature, "(C)"),
+                             Type == "motifs" ~paste(feature, "(A)"),
+                             TRUE ~ feature))
 
 RPPA_motif_rows_right <- which(df$feature_type %in% callouts$feature_type)
 
-label_colors <- df$Color[RPPA_motif_rows_right]
-names(label_colors) <- df$feature[RPPA_motif_rows_right]
-
 haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
                                    labels = df$feature[RPPA_motif_rows_right],
-                                   labels_gp = gpar(fontsize = 4,
-                                                    col = label_colors)))
+                                   labels_gp = gpar(fontsize = 5)))
 
 hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        name = "lfc rr",
@@ -437,47 +421,10 @@ hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        use_raster = FALSE)
 hm_multiomics_14_callouts
 
-#Annotate callouts with abbreviations of the type instead of changing the color
-
-df <- multiomics_14_features_data_ann %>%
-  #filter(!Type == "RNAseq") %>%
-  mutate(feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"),
-         feature = case_when(Type == "RPPA" ~paste(feature, "(R)"),
-                             Type == "cycIF" ~paste(feature, "(C)"),
-                             Type == "motifs" ~paste(feature, "(A)"),
-                             TRUE ~ feature))
-
-RPPA_motif_rows_right <- which(df$feature_type %in% callouts$feature_type)
-
-haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
-                                   labels = df$feature[RPPA_motif_rows_right],
-                                   labels_gp = gpar(fontsize = 5)))
-
-hm_multiomics_14_callouts_type <- Heatmap(multiomics_14_features_dm,
-                       name = "lfc rr",
-                       column_title = "multiomics_14 features",
-                       column_title_gp = gpar(fontsize = 6),
-                       width = ncol(multiomics_14_features_dm)*unit(4, "mm"),
-                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-                       cluster_rows = FALSE,
-                       cluster_row_slices = FALSE, 
-                       cluster_columns = FALSE,
-                       row_split = multiomics_14_features_ann$Cluster,
-                       row_gap = unit(3, "mm"),
-                       row_title = " ",
-                       show_row_names = FALSE,
-                       row_names_gp = gpar(fontsize = 12),
-                       column_names_gp = gpar(fontsize = 6),
-                     # left_annotation = haLeft,
-                       right_annotation = haRight,
-                       top_annotation = haCol_multiomics_14,
-                       use_raster = FALSE)
-hm_multiomics_14_callouts_type
-
 ###
 if(create_pdfs){
   pdf("../plots/MDD_integrated_multiomics_14_callouts_heatmap.pdf",height = 10) 
-  draw(hm_multiomics_14_callouts_type)
+  draw(hm_multiomics_14_callouts)
   res <- dev.off()
 } 
 
@@ -497,6 +444,7 @@ hm_multiomics_14_mean <- Heatmap(multiomics_14_features_data_mean_dm,
                               column_names_gp = gpar(fontsize = 10),
                               use_raster = FALSE)
 draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
+
 mean_highlight_thresh <- 0.5
 hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_features_data_mean_dm,
                             name = "lfc ",
@@ -517,33 +465,21 @@ hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_features_data_mean_dm,
 hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
 multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
 
-#highlight cells with values greater than abs(mean_highlight_thresh
+#Compare this clustering to the seed42 clustering
+multiomics_14_single_seed_features_data_mean<- read_csv(paste0(data_path, "MDD_combined14_mean_seed42.csv"))
+multiomics_14_single_seed_features_data_mean_dm <- multiomics_14_single_seed_features_data_mean %>%
+  select(-Cluster) %>%
+  as.matrix()
+rownames(multiomics_14_single_seed_features_data_mean_dm) <- multiomics_14_single_seed_features_data_mean$Cluster
+single_seed_to_consensus_cors <- cor(t(multiomics_14_features_data_mean_dm), t(multiomics_14_single_seed_features_data_mean_dm), method = "pearson")
 
-
-#Order the multiomics_14 heatmap by the clustering of the mean values
-#reorder the levels in multiomics_14_features ann that are used in  row_split
-# dm_ordered <- multiomics_14_features_data_ann %>%
-#   mutate(Cluster = fct_relevel(Cluster, (rownames(multiomics_14_features_data_mean_dm)[multiomics_14_cluster_order])))
-# 
-# hm_multiomics_14_ordered <- Heatmap(multiomics_14_features_dm,
-#                        name = "lfc rr",
-#                        column_title = "multiomics_14 features",
-#                        column_title_gp = gpar(fontsize = 12),
-#                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-#                        cluster_rows = FALSE,
-#                        cluster_row_slices = FALSE, 
-#                        cluster_columns = FALSE,
-#                        row_split = dm_ordered$Cluster,
-#                        row_gap = unit(2, "mm"),
-#                        row_title = " ",
-#                        show_row_names = FALSE,
-#                        row_names_gp = gpar(fontsize = 8),
-#                        column_names_gp = gpar(fontsize = 10),
-#           #             left_annotation = haRow_multiomics_14,
-#                        use_raster = FALSE)
-# hm_multiomics_14_ordered
-#####
-
+hm_single_seed_to_consensus_cors <- Heatmap(single_seed_to_consensus_cors, 
+                                            column_title = "single seed to consensus clustering correlations",
+                                            name = "pearson\ncorrelations ",
+                                            row_names_gp = gpar(fontsize = 5),
+                                            column_names_gp = gpar(fontsize = 5),
+                                            col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
+hm_single_seed_to_consensus_cors
 #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
 #Remove RNAseq and label rows
@@ -597,22 +533,13 @@ hm_multiomics_14_noRNA
 #####
 if(create_pdfs){
   pdf("../plots/MDD_integrated_rr_combined_heatmaps.pdf",height = 10) 
- # draw(hm_combined18)
-  #draw(hm_combined18_mean)
  draw(hm_multiomics_14)
   draw(hm_multiomics_14_callouts)
     draw(hm_multiomics_14_callouts_type)
   draw(hm_multiomics_14_mean)
-  draw(hm_multiomics_14_noRNA)
+  draw(hm_single_seed_to_consensus_cors)
   res <- dev.off()
 } 
-
-if(create_pdfs){
-  pdf("../plots/MDD_integrated_multiomics_14_mean_heatmap.pdf",height = 8, width = 5) 
-  draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
-  res <- dev.off()
-} 
-
 
 ```
 
