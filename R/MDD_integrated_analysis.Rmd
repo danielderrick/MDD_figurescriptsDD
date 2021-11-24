@@ -184,7 +184,7 @@ if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
  
   #generate a consensus of all clustering consensuses
   set.seed(100)
-  ce_cons <- clue::cl_consensus(con_cons, control = list(nruns = 5))
+  ce_cons <- clue::cl_consensus(con_cons, method = "HE", control = list(nruns = 5))
   #Save the cluster assignments to disk
   clusters <- cl_class_ids(ce_cons)
   cluster_df <- tibble(Cluster = clusters,
@@ -467,7 +467,30 @@ hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_features_data_mean_dm,
 hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
 multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
 
-#Compare this clustering to the seed42 clustering
+#Compare the consensus clustering to the previous single clustering
+path <- "../multiomics_analysis/data/MDD_combined14_single_tables.xlsx"
+multiomics_combined14_single <- path %>% 
+  readxl::excel_sheets() %>% 
+  set_names() %>% 
+  map_dfr(readxl::read_excel, path = path) %>%
+  mutate(Cluster = str_remove(Cluster, "module_")) %>%
+  arrange(feature_type)
+
+#convert to a clue partition
+multiomics_combined14_single_partition<-multiomics_combined14_single %>%
+  pull(Cluster) %>%
+  set_names(multiomics_combined14_single$feature_type) %>%
+  as.cl_partition()
+
+#convert consensus clustering to a clue hard partition
+multiomics_14_partition <- multiomics_14_features_data_ann %>%
+   arrange(feature_type) %>%
+  pull(Cluster) %>%
+  set_names(multiomics_14_features_data_ann$feature_type) %>%
+  as.cl_partition()
+
+single_to_consensus_agreement <- cl_agreement(multiomics_combined14_single_partition, multiomics_14_partition, method = "FM")
+
 multiomics_14_single_features_data_mean<- read_csv(paste0(data_path, "MDD_combined14_single_mean.csv"))
 multiomics_14_single_features_data_mean_dm <- multiomics_14_single_features_data_mean %>%
   select(-Cluster) %>%
