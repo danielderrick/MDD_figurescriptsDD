@@ -59,10 +59,6 @@ condition_order <- paste0(rep(ligand_order, each = length(experimentalTimePoints
 #create a named vector of color values for the Heatmap clusters
 cluster_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[c(1:12)], names = 1:12), c("13" = "#222222", "14" = "#555555", "15" = "#999999", "16" = "#AAAAAA", "17" = "#BBBBBB", "18" = "#CCCCCC", "19" = "#DDDDDD"))
 
-multiomics_14_clusters <-c("1", "2", "3+14", "4", "5","6", "7+17", "8", "9+15", "10+12", "11","13","16", "18")
-                          
-cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = multiomics_14_clusters[1:12]), c("16" = "#222222", "18" = "#555555"))
-
 ligand_cols <- c("CTRL" = "#7A4A2A",
                  "PBS" = "#8dd3c7",
                  "HGF" = "#80b1d3",
@@ -219,7 +215,6 @@ if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
   agreement_to_consensus_mean <- mean(ags_con)
   agreement_to_consensus_sd <- sd(ags_con)
 
-  #compare consensus clustering to previous single seed
 }
 
 #Add the cluster assignments to the data
@@ -315,14 +310,15 @@ if(write_csvs) {
 #Use the multiomics features data and the cluster assignments to
 #create the multiomics_14 dataset
 
-multiomics_14_clusters <-c("1", "2", "3+14", "4", "5","6", "7+17", "8", "9+15", "10+12", "11","13","16", "18")
+multiomics_14_clusters <-c("1", "2+8", "3", "4", "5+6", "7", "9+18", "10", "11","12","13","14+16", "15","17")
+cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = multiomics_14_clusters[1:12]), c("15" = "#222222", "17" = "#555555"))
                           
 multiomics_14_features_data_ann <- multiomics_data_ann %>%
     mutate(Cluster = as.character(Cluster),
-      Cluster = case_when(Cluster %in% c("3","14") ~"3+14",
-                          Cluster %in% c("7","17") ~"7+17",
-                          Cluster %in% c("9", "15") ~"9+15",
-                          Cluster %in% c("10","12") ~"10+12",
+      Cluster = case_when(Cluster %in% c("2","8") ~"2+8",
+                          Cluster %in% c("5","6") ~"5+6",
+                          Cluster %in% c("9", "18") ~"9+18",
+                          Cluster %in% c("14","16") ~"14+16",
                                TRUE ~Cluster),
       Cluster = factor(Cluster, levels = multiomics_14_clusters, ordered = TRUE)) %>%
   as.data.frame()
@@ -402,6 +398,10 @@ haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
                                    labels = df$feature[RPPA_motif_rows_right],
                                    labels_gp = gpar(fontsize = 5)))
 
+haLeft = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
+                                   labels = df$feature[RPPA_motif_rows_right],
+                                   labels_gp = gpar(fontsize = 5)))
+
 hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        name = "lfc rr",
                        column_title = "multiomics_14 features",
@@ -413,7 +413,7 @@ hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        cluster_columns = FALSE,
                        row_split = multiomics_14_features_ann$Cluster,
                        row_gap = unit(3, "mm"),
-                       row_title = " ",
+                       #row_title = " ",
                        show_row_names = FALSE,
                        row_names_gp = gpar(fontsize = 12),
                        column_names_gp = gpar(fontsize = 6),
@@ -491,6 +491,7 @@ multiomics_14_partition <- multiomics_14_features_data_ann %>%
 
 single_to_consensus_agreement <- cl_agreement(multiomics_combined14_single_partition, multiomics_14_partition, method = "FM")
 
+#calculate means for single clustering
 multiomics_14_single_features_data_mean<- read_csv(paste0(data_path, "MDD_combined14_single_mean.csv"))
 multiomics_14_single_features_data_mean_dm <- multiomics_14_single_features_data_mean %>%
   select(-Cluster) %>%
@@ -540,32 +541,32 @@ haRow_noRNA_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_noRNA_features
                                                Type = assay_cols,
                                                Set = c("shared" = "black", ligand_cols)))
 #####
-hm_multiomics_14_noRNA <- Heatmap(multiomics_14_noRNA_features_dm,
-                       name = "lfc rr",
-                       column_title = "multiomics_14 features, no RNAseq",
-                       column_title_gp = gpar(fontsize = 12),
-                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-                       cluster_rows = FALSE,
-                       cluster_row_slices = FALSE, 
-                       cluster_columns = FALSE,
-                       row_split = multiomics_14_noRNA_features_ann$Cluster,
-                       row_gap = unit(2, "mm"),
-                       row_title = " ",
-                       show_row_names = TRUE,
-                       row_names_gp = gpar(fontsize = 2.5),
-                       column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_noRNA_multiomics_14,
-                       use_raster = FALSE)
-hm_multiomics_14_noRNA
+# hm_multiomics_14_noRNA <- Heatmap(multiomics_14_noRNA_features_dm,
+#                        name = "lfc rr",
+#                        column_title = "multiomics_14 features, no RNAseq",
+#                        column_title_gp = gpar(fontsize = 12),
+#                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+#                        cluster_rows = FALSE,
+#                        cluster_row_slices = FALSE, 
+#                        cluster_columns = FALSE,
+#                        row_split = multiomics_14_noRNA_features_ann$Cluster,
+#                        row_gap = unit(2, "mm"),
+#                        row_title = " ",
+#                        show_row_names = TRUE,
+#                        row_names_gp = gpar(fontsize = 2.5),
+#                        column_names_gp = gpar(fontsize = 10),
+#                        left_annotation = haRow_noRNA_multiomics_14,
+#                        use_raster = FALSE)
+# hm_multiomics_14_noRNA
 
 #####
 if(create_pdfs){
-  pdf("../plots/MDD_integrated_rr_combined_heatmaps.pdf",height = 10) 
- draw(hm_multiomics_14)
+  pdf("../plots/MDD_multiomics_heatmaps.pdf",height = 10) 
+  draw(hm_multiomics_14)
   draw(hm_multiomics_14_callouts)
-    draw(hm_multiomics_14_callouts_type)
+  #draw(hm_multiomics_14_callouts_type)
   draw(hm_multiomics_14_mean)
-  draw(hm_single_seed_to_consensus_cors)
+  draw(hm_single_to_consensus_cors)
   res <- dev.off()
 } 
 
