@@ -178,17 +178,10 @@ if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
     save(cons, file =paste0("../Data/MDD_multiomics_clstrng_run_",x,".rda"))
   })
   con_cons <- clue::cl_ensemble(list = lapply(1:25, function(x){
-    load(paste0("../Data/MDD_multiomics_clstrngs_",nbr_clusterings,"_nrb_cnsns_",nbr_consensus,"_run_",x,".rda"))
+    load(paste0("../Data/MDD_multiomics_clstrng_run_",x,".rda"))
     clue::as.cl_partition(cons)
   }))
-  #calculate agreement between all possible cluster pairings
-  agrmnts <- lapply(1:(nbr_runs-1), function(x){
-    res <- lapply((x+1):nbr_runs, function(y){
-      cl_agreement(con_cons[[x]], con_cons[[y]], method = "FM")
-    }) %>%
-      unlist()
-  })
-  
+ 
   #generate a consensus of all clustering consensuses
   set.seed(100)
   ce_cons <- clue::cl_consensus(con_cons, control = list(nruns = 5))
@@ -198,28 +191,37 @@ if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
                        feature_type = names(clusters))
   write_csv(cluster_df, paste0(data_path,"MDD_multiomics_clusters.csv")) 
   
-  #Calculate the agreement between ensemble elements and the consensus clusetering
-  ags_con <- sapply(con_cons, clue::cl_agreement, y = ce_cons, method = "FM")
+  #Calculate the agreement between ensemble elements and the consensus clustering
+  #
+  #clue::cl_agreement()
+  #"FM"  the index of Fowlkes and Mallows (1983), i.e., the ratio N_xy / sqrt(N_x N_y) of the number N_xy of distinct pairs of objects in the same class in both partitions and the geometric mean of the numbers N_x and N_y of distinct pairs of objects in the same class in partition x and partition y, respectively. For soft partitions, (currently) the Fowlkes-Mallows index of the corresponding nearest hard partitions is used.
   
+   #calculate agreement between all possible cluster pairings
+  agrmnts <- lapply(1:(nbr_runs-1), function(x){
+    res <- lapply((x+1):nbr_runs, function(y){
+      cl_agreement(con_cons[[x]], con_cons[[y]], method = "FM")
+    }) %>%
+      unlist()
+  })
   
-  p <- ggplot(tibble(agreements = unlist(agrmnts)), aes(x = agreements)) +
+  p_inner_agreements <- ggplot(tibble(agreements = unlist(agrmnts)), aes(x = agreements)) +
     geom_density() +
     theme_bw()
-  p
+  p_inner_agreements
+  
+  ags_con <- sapply(con_cons, clue::cl_agreement, y = ce_cons, method = "FM")
+    p_agreement_to_consensus <- ggplot(tibble(agreement_to_consensus = ags_con, method = "FM"), aes(x = agreement_to_consensus)) +
+    geom_density() +
+    theme_bw()
+  p_agreement_to_consensus
   
   #Todo annotate figure with statistics
   agreement_to_consensus_mean <- mean(ags_con)
   agreement_to_consensus_sd <- sd(ags_con)
-  p <- ggplot(tibble(agreement_to_consensus = ags_con, method = "FM"), aes(x = agreement_to_consensus)) +
-    geom_density() +
-    theme_bw()
-  p
-}
-#
-#clue::cl_agreement()
-#"FM"  the index of Fowlkes and Mallows (1983), i.e., the ratio N_xy / sqrt(N_x N_y) of the number N_xy of distinct pairs of objects in the same class in both partitions and the geometric mean of the numbers N_x and N_y of distinct pairs of objects in the same class in partition x and partition y, respectively. For soft partitions, (currently) the Fowlkes-Mallows index of the corresponding nearest hard partitions is used.
 
-######
+  #compare consensus clustering to previous single seed
+}
+
 #Add the cluster assignments to the data
 multiomics_data_ann <-  tibble(feature_type = names(clusters),
                                Cluster = as.character(clusters)) %>%
@@ -417,7 +419,7 @@ hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
                        column_names_gp = gpar(fontsize = 6),
                      # left_annotation = haLeft,
                        right_annotation = haRight,
-                       top_annotation = haCol_multiomics_14,
+                       #top_annotation = haCol_multiomics_14,
                        use_raster = FALSE)
 hm_multiomics_14_callouts
 
@@ -466,20 +468,23 @@ hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
 multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
 
 #Compare this clustering to the seed42 clustering
-multiomics_14_single_seed_features_data_mean<- read_csv(paste0(data_path, "MDD_combined14_mean_seed42.csv"))
-multiomics_14_single_seed_features_data_mean_dm <- multiomics_14_single_seed_features_data_mean %>%
+multiomics_14_single_features_data_mean<- read_csv(paste0(data_path, "MDD_combined14_single_mean.csv"))
+multiomics_14_single_features_data_mean_dm <- multiomics_14_single_features_data_mean %>%
   select(-Cluster) %>%
   as.matrix()
-rownames(multiomics_14_single_seed_features_data_mean_dm) <- multiomics_14_single_seed_features_data_mean$Cluster
-single_seed_to_consensus_cors <- cor(t(multiomics_14_features_data_mean_dm), t(multiomics_14_single_seed_features_data_mean_dm), method = "pearson")
+rownames(multiomics_14_single_features_data_mean_dm) <- multiomics_14_single_features_data_mean$Cluster
+single_to_consensus_cors <- cor(t(multiomics_14_features_data_mean_dm), t(multiomics_14_single_features_data_mean_dm), method = "pearson")
 
-hm_single_seed_to_consensus_cors <- Heatmap(single_seed_to_consensus_cors, 
-                                            column_title = "single seed to consensus clustering correlations",
+hm_single_to_consensus_cors <- Heatmap(single_to_consensus_cors, 
+                                            column_title = "single to consensus clustering correlations",
                                             name = "pearson\ncorrelations ",
                                             row_names_gp = gpar(fontsize = 5),
                                             column_names_gp = gpar(fontsize = 5),
                                             col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-hm_single_seed_to_consensus_cors
+hm_single_to_consensus_cors
+
+#calculate the agreement of the consensus clustering to the single clustering
+
 #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
 #Remove RNAseq and label rows
