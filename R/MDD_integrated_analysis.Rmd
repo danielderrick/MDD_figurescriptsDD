@@ -294,6 +294,7 @@ cor_hm <- Heatmap(cor_dm,
                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 cor_hm
 
+
 if(create_pdfs) {
   pdf("../plots/MDD_multiomics_module_module_correlations_reduced.pdf",
       width = 9, height = 8)
@@ -507,9 +508,36 @@ hm_single_to_consensus_cors <- Heatmap(single_to_consensus_cors,
                                             col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 hm_single_to_consensus_cors
 
-#calculate the agreement of the consensus clustering to the single clustering
+#find set differences between single seed modules 2 and 9 and consensus modules 9 and 10 respectively.
+cluster2_single <- multiomics_combined14_single %>%
+  filter(Cluster == "2")
+cluster4_consensus <- multiomics_14_features_data_ann %>%
+  filter(Cluster == "4")
+cluster2_inters <- intersect(cluster2_single$feature_type, cluster4_consensus$feature_type)
+cluster2_dif <- setdiff(cluster2_single$feature_type, cluster4_consensus$feature_type)
+cluster4_dif <- setdiff(cluster4_consensus$feature_type,cluster2_single$feature_type)
 
-#Remove the cluster assignments to keep the code similar to the 
+multiomics_combined14_single_2_9 <- multiomics_combined14_single %>%
+  filter(Cluster %in% c("2","9")) %>%
+  rename(Single_Clustering = Cluster) %>%
+  select(feature_type, Single_Clustering)
+multiomics_14_features_data_ann_4_10 <- multiomics_14_features_data_ann %>%
+  filter(Cluster %in% c("4", "10")) %>%
+  rename(Consensus_Clustering =Cluster) %>%
+  mutate(Consensus_Clustering = as.character(Consensus_Clustering)) %>%
+select(Consensus_Clustering, feature_type)
+clustering_module_comparisons <- multiomics_combined14_single_2_9 %>%
+ full_join(multiomics_14_features_data_ann_4_10, by = "feature_type") %>%
+  mutate(Both = case_when(!is.na(Single_Clustering)&!is.na(Consensus_Clustering) ~ "x",
+                          TRUE ~ ""))
+ write_csv(clustering_module_comparisons, "../multiomics_analysis/tables/MDD_multiomics_cl1_cl9_comparisons.csv")
+
+ clustering_module_comparisons_counts <- clustering_module_comparisons %>%
+   group_by(Single_Clustering, Consensus_Clustering, Both) %>%
+   count()
+ write_csv(clustering_module_comparisons_counts, "../multiomics_analysis/tables/MDD_multiomics_cl1_cl9_comparisons_counts.csv")
+
+ #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
 #Remove RNAseq and label rows
 multiomics_14_noRNA_features_data <- multiomics_14_features_data_ann %>%
