@@ -18,7 +18,7 @@ library(clue)
 
 source("../R/MDD_functions.R")
 create_pdfs <- TRUE
-write_csvs <- FALSE
+write_csvs <- TRUE
 
 ```
 
@@ -143,7 +143,7 @@ assay_cols <- structure(RColorBrewer::brewer.pal(8, "Paired")[c(3, 2,6,5, 1)], n
 
 ### Combined heatmaps
 
-```{r heatmaps}
+```{r cluster_data}
 
 #create a numeric matrix with feature row names
 multiomics_data_dm <- multiomics_data %>%
@@ -240,46 +240,49 @@ multiomics_data_mean_dm <- multiomics_data_mean %>%
   as.matrix()
 rownames(multiomics_data_mean_dm) <- paste0("Module_",multiomics_data_mean$Cluster,"_", multiomics_count$n)
 
-#Make heatmap with annotations
-haRow_multiomics <- HeatmapAnnotation(df = multiomics_ann,
-                                    which = "row",
-                                    col = list(Cluster = factor(cluster_cols, levels = cluster_cols, ordered = TRUE),
-                                               Type = assay_cols,
-                                               Set = c("shared" = "black", ligand_cols)))
+```
 
-hm_multiomics <- Heatmap(multiomics_data_dm,
-                       name = "lfc rr",
-                       column_title = "Multiomics features",
-                       column_title_gp = gpar(fontsize = 12),
-                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-                       cluster_rows = FALSE,
-                       cluster_row_slices = FALSE, 
-                       cluster_columns = FALSE,
-                       row_split = multiomics_ann$Cluster,
-                       row_gap = unit(2, "mm"),
-                       row_title = " ",
-                       show_row_names = FALSE,
-                       row_names_gp = gpar(fontsize = 8),
-                       column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_multiomics,
-                       use_raster = FALSE)
-hm_multiomics
-
-hm_multiomics_mean <- Heatmap(multiomics_data_mean_dm,
-                            name = "lfc ",
-                            column_title = "Multiomics k=18 cluster means",
-                            column_title_gp = gpar(fontsize = 12),
-                            col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-                            cluster_rows = FALSE,
-                            cluster_row_slices = FALSE,
-                            cluster_columns = FALSE,
-                            row_gap = unit(2, "mm"),
-                            row_title = " ",
-                            show_row_names = TRUE,
-                            row_names_gp = gpar(fontsize = 8),
-                            column_names_gp = gpar(fontsize = 10),
-                            use_raster = FALSE)
-hm_multiomics_mean
+```{r correlate_modules}
+# 
+# haRow_multiomics <- HeatmapAnnotation(df = multiomics_ann,
+#                                     which = "row",
+#                                     col = list(Cluster = factor(cluster_cols, levels = cluster_cols, ordered = TRUE),
+#                                                Type = assay_cols,
+#                                                Set = c("shared" = "black", ligand_cols)))
+# 
+# hm_multiomics <- Heatmap(multiomics_data_dm,
+#                        name = "lfc rr",
+#                        column_title = "Multiomics features",
+#                        column_title_gp = gpar(fontsize = 12),
+#                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+#                        cluster_rows = FALSE,
+#                        cluster_row_slices = FALSE, 
+#                        cluster_columns = FALSE,
+#                        row_split = multiomics_ann$Cluster,
+#                        row_gap = unit(2, "mm"),
+#                        row_title = " ",
+#                        show_row_names = FALSE,
+#                        row_names_gp = gpar(fontsize = 8),
+#                        column_names_gp = gpar(fontsize = 10),
+#                        left_annotation = haRow_multiomics,
+#                        use_raster = FALSE)
+# hm_multiomics
+# 
+# hm_multiomics_mean <- Heatmap(multiomics_data_mean_dm,
+#                             name = "lfc ",
+#                             column_title = "Multiomics k=18 cluster means",
+#                             column_title_gp = gpar(fontsize = 12),
+#                             col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+#                             cluster_rows = FALSE,
+#                             cluster_row_slices = FALSE,
+#                             cluster_columns = FALSE,
+#                             row_gap = unit(2, "mm"),
+#                             row_title = " ",
+#                             show_row_names = TRUE,
+#                             row_names_gp = gpar(fontsize = 8),
+#                             column_names_gp = gpar(fontsize = 10),
+#                             use_raster = FALSE)
+# hm_multiomics_mean
 
 #find correlations between the modules and show cut to combine into 14 modules
 cor_dm <- cor(t(multiomics_data_mean_dm),  method = "pearson")
@@ -287,26 +290,30 @@ hr = hclust(dist(cor_dm))
 clusters = dendextend::cutree(hr, k = 14)
 
 cor_hm <- Heatmap(cor_dm,
+                  column_title = "Module correlations",
                    name = "pearson\ncorrelation",
+                  row_title = " ",
                   row_names_gp = gpar(fontsize = 10),
                   split = clusters,
                   column_names_gp = gpar(fontsize = 10),
                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 cor_hm
 
-
 if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_module_module_correlations_reduced.pdf",
+  pdf("../multiomics_analysis/plots/MDD_multiomics_module_module_correlations_SF6b.pdf",
       width = 9, height = 8)
   res <- print(cor_hm)
   res <- dev.off()
 }
 
-if(write_csvs) {
-  write.csv(cor_dm, "../tables/MDD_multiomics_module_module_correlations.csv")
+# if(write_csvs) {
+#   write.csv(cor_dm, "../tables/MDD_multiomics_module_module_correlations.csv")
+# }
 
-}
+```
 
+
+```{r reduce_to_14_clusters}
 #####
 #Use the multiomics features data and the cluster assignments to
 #create the multiomics_14 dataset
@@ -314,7 +321,7 @@ if(write_csvs) {
 multiomics_14_clusters <-c("1", "2+8", "3", "4", "5+6", "7", "9+18", "10", "11","12","13","14+16", "15","17")
 cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = multiomics_14_clusters[1:12]), c("15" = "#222222", "17" = "#555555"))
                           
-multiomics_14_features_data_ann <- multiomics_data_ann %>%
+multiomics_14_data_ann <- multiomics_data_ann %>%
     mutate(Cluster = as.character(Cluster),
       Cluster = case_when(Cluster %in% c("2","8") ~"2+8",
                           Cluster %in% c("5","6") ~"5+6",
@@ -324,60 +331,55 @@ multiomics_14_features_data_ann <- multiomics_data_ann %>%
       Cluster = factor(Cluster, levels = multiomics_14_clusters, ordered = TRUE)) %>%
   as.data.frame()
 
-#Remove the cluster assignments to keep the code similar to the 
-#other dataset processing
-multiomics_14_features_data <- multiomics_14_features_data_ann %>%
-  select(-Cluster)
-
 #create a numeric matrix with feature row names
-multiomics_14_features_dm <- multiomics_14_features_data %>%
+multiomics_14_dm <- multiomics_14_data_ann %>%
   select(all_of(condition_order)) %>%
   as.matrix() 
-rownames(multiomics_14_features_dm) <- multiomics_14_features_data$feature_type
-multiomics_14_features_dm <- multiomics_14_features_dm[!is.nan(multiomics_14_features_dm[,1]),]
+rownames(multiomics_14_dm) <- multiomics_14_data_ann$feature_type
+multiomics_14_dm <- multiomics_14_dm[!is.nan(multiomics_14_dm[,1]),]
 
-multiomics_14_features_ann <- multiomics_14_features_data_ann %>%
-  select(Cluster, Type, Set) %>%
-  as.data.frame()
+# 
+# multiomics_14_features_count <- multiomics_14_data_ann %>%
+#   group_by(Cluster) %>%
+#   dplyr::count()
 
 #Create a matrix and heatmap of the mean combined18 values
-multiomics_14_features_data_mean <- multiomics_14_features_data_ann %>%
+multiomics_14_data_mean <- multiomics_14_data_ann %>%
   group_by(Cluster) %>%
   summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
 
-multiomics_14_features_count <- multiomics_14_features_data_ann %>%
-  group_by(Cluster) %>%
-  dplyr::count()
-
-multiomics_14_features_data_mean_dm <- multiomics_14_features_data_mean %>%
+multiomics_14_data_mean_dm <- multiomics_14_data_mean %>%
   select(-Cluster) %>%
   as.matrix()
-rownames(multiomics_14_features_data_mean_dm) <-multiomics_14_features_data_mean$Cluster
+rownames(multiomics_14_data_mean_dm) <-multiomics_14_data_mean$Cluster
 
+```
+
+```{r 14_module_heatmaps}
 #Make heatmap with annotations
-haRow_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_features_ann,
-                                    which = "row",
-                                    col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
-                                               Type = assay_cols,
-                                               Set = c("shared" = "white", ligand_cols)))
-
-hm_multiomics_14 <- Heatmap(multiomics_14_features_dm,
-                       name = "lfc rr",
-                       column_title = "multiomics_14 features",
-                       column_title_gp = gpar(fontsize = 12),
-                       col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-                       cluster_rows = FALSE,
-                       cluster_row_slices = FALSE, 
-                       cluster_columns = FALSE,
-                       row_split = multiomics_14_features_ann$Cluster,
-                       row_gap = unit(2, "mm"),
-                       row_title = " ",
-                       show_row_names = FALSE,
-                       row_names_gp = gpar(fontsize = 8),
-                       column_names_gp = gpar(fontsize = 10),
-                       left_annotation = haRow_multiomics_14,
-                       use_raster = FALSE)
-hm_multiomics_14
+# haRow_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_data_ann%>%select(Cluster, Type, Set),
+#                                     which = "row",
+#                                     col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
+#                                                Type = assay_cols,
+#                                                Set = c("shared" = "white", ligand_cols)))
+# 
+# hm_multiomics_14 <- Heatmap(multiomics_14_dm,
+#                        name = "lfc rr",
+#                        column_title = "multiomics_14 features",
+#                        column_title_gp = gpar(fontsize = 12),
+#                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
+#                        cluster_rows = FALSE,
+#                        cluster_row_slices = FALSE, 
+#                        cluster_columns = FALSE,
+#                        row_split = multiomics_14_data_ann$Cluster,
+#                        row_gap = unit(2, "mm"),
+#                        row_title = " ",
+#                        show_row_names = FALSE,
+#                        row_names_gp = gpar(fontsize = 8),
+#                        column_names_gp = gpar(fontsize = 10),
+#                        left_annotation = haRow_multiomics_14,
+#                        use_raster = FALSE)
+# hm_multiomics_14
 
 ###multiomics_14 heatmap with ligand column annotations, RPPA, cycIF and motif callouts
   callouts <- read_csv(paste0(data_path, "MDD_multiomics_heatmap_callouts.csv")) %>%
@@ -385,7 +387,7 @@ hm_multiomics_14
 
 #Annotate callouts with abbreviations of the type 
 
-df <- multiomics_14_features_data_ann %>%
+df <- multiomics_14_data_ann %>%
   #filter(!Type == "RNAseq") %>%
   mutate(feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"),
          feature = case_when(Type == "RPPA" ~paste(feature, "(R)"),
@@ -399,15 +401,11 @@ haRight = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
                                    labels = df$feature[RPPA_motif_rows_right],
                                    labels_gp = gpar(fontsize = 5)))
 
-haLeft = rowAnnotation(foo = anno_mark(at = RPPA_motif_rows_right,
-                                   labels = df$feature[RPPA_motif_rows_right],
-                                   labels_gp = gpar(fontsize = 5)))
-
-hm_multiomics_14_callouts <- Heatmap(multiomics_14_features_dm,
+hm_multiomics_14_callouts <- Heatmap(multiomics_14_dm,
                        name = "lfc rr",
                        column_title = "multiomics_14 features",
                        column_title_gp = gpar(fontsize = 6),
-                       width = ncol(multiomics_14_features_dm)*unit(4, "mm"),
+                       width = ncol(multiomics_14_dm)*unit(4, "mm"),
                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
                        cluster_rows = FALSE,
                        cluster_row_slices = FALSE, 
@@ -430,43 +428,43 @@ if(create_pdfs){
   draw(hm_multiomics_14_callouts)
   res <- dev.off()
 } 
-
-hm_multiomics_14_mean <- Heatmap(multiomics_14_features_data_mean_dm,
-                              name = "lfc ",
-                              column_title = "multiomics_14 cluster means",
-                              column_title_gp = gpar(fontsize = 12),
-                              col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-                              cluster_rows = FALSE,
-                              cluster_row_slices = FALSE,
-                              cluster_columns = FALSE,
-                              row_gap = unit(2, "mm"),
-                              row_names_side = "left",
-                              row_title = " ",
-                              show_row_names = TRUE,
-                              row_names_gp = gpar(fontsize = 12),
-                              column_names_gp = gpar(fontsize = 10),
-                              use_raster = FALSE)
-draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
-
-mean_highlight_thresh <- 0.5
-hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_features_data_mean_dm,
-                            name = "lfc ",
-                            column_title = "multiomics_14 cluster means",
-                            column_title_gp = gpar(fontsize = 12),
-                            col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
-                            cluster_rows = FALSE,
-                            cluster_row_slices = FALSE,
-                            cluster_columns = FALSE,
-                            row_gap = unit(2, "mm"),
-                            show_row_names = TRUE,
-                            row_names_gp = gpar(fontsize = 8),
-                            column_names_gp = gpar(fontsize = 10),
-                            cell_fun = function(j, i, x, y, width, height, fill) {
-        if(abs(multiomics_14_features_data_mean_dm[i, j]) > mean_highlight_thresh)
-            grid.text(sprintf("%.1f", multiomics_14_features_data_mean_dm[i, j]), x, y, gp = gpar(fontsize = 12))},
-                            use_raster = FALSE)
-hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
-multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
+# 
+# hm_multiomics_14_mean <- Heatmap(multiomics_14_data_mean_dm,
+#                               name = "lfc ",
+#                               column_title = "multiomics_14 cluster means",
+#                               column_title_gp = gpar(fontsize = 12),
+#                               col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+#                               cluster_rows = FALSE,
+#                               cluster_row_slices = FALSE,
+#                               cluster_columns = FALSE,
+#                               row_gap = unit(2, "mm"),
+#                               row_names_side = "left",
+#                               row_title = " ",
+#                               show_row_names = TRUE,
+#                               row_names_gp = gpar(fontsize = 12),
+#                               column_names_gp = gpar(fontsize = 10),
+#                               use_raster = FALSE)
+# draw(hm_multiomics_14_mean, heatmap_legend_side = "left")
+# 
+# mean_highlight_thresh <- 0.5
+# hm_multiomics_14_mean_obj <- Heatmap(multiomics_14_data_mean_dm,
+#                             name = "lfc ",
+#                             column_title = "multiomics_14 cluster means",
+#                             column_title_gp = gpar(fontsize = 12),
+#                             col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")),
+#                             cluster_rows = FALSE,
+#                             cluster_row_slices = FALSE,
+#                             cluster_columns = FALSE,
+#                             row_gap = unit(2, "mm"),
+#                             show_row_names = TRUE,
+#                             row_names_gp = gpar(fontsize = 8),
+#                             column_names_gp = gpar(fontsize = 10),
+#                             cell_fun = function(j, i, x, y, width, height, fill) {
+#         if(abs(multiomics_14_data_mean_dm[i, j]) > mean_highlight_thresh)
+#             grid.text(sprintf("%.1f", multiomics_14_data_mean_dm[i, j]), x, y, gp = gpar(fontsize = 12))},
+#                             use_raster = FALSE)
+#hm_multiomics_14_mean <- draw(hm_multiomics_14_mean_obj)
+#multiomics_14_cluster_order <- row_order(hm_multiomics_14_mean)
 
 #Compare the consensus clustering to the previous single clustering
 path <- "../multiomics_analysis/data/MDD_combined14_single_tables.xlsx"
@@ -484,10 +482,10 @@ multiomics_combined14_single_partition<-multiomics_combined14_single %>%
   as.cl_partition()
 
 #convert consensus clustering to a clue hard partition
-multiomics_14_partition <- multiomics_14_features_data_ann %>%
+multiomics_14_partition <- multiomics_14_data_ann %>%
    arrange(feature_type) %>%
   pull(Cluster) %>%
-  set_names(multiomics_14_features_data_ann$feature_type) %>%
+  set_names(multiomics_14_data_ann$feature_type) %>%
   as.cl_partition()
 
 single_to_consensus_agreement <- cl_agreement(multiomics_combined14_single_partition, multiomics_14_partition, method = "FM")
@@ -498,7 +496,7 @@ multiomics_14_single_features_data_mean_dm <- multiomics_14_single_features_data
   select(-Cluster) %>%
   as.matrix()
 rownames(multiomics_14_single_features_data_mean_dm) <- multiomics_14_single_features_data_mean$Cluster
-single_to_consensus_cors <- cor(t(multiomics_14_features_data_mean_dm), t(multiomics_14_single_features_data_mean_dm), method = "pearson")
+single_to_consensus_cors <- cor(t(multiomics_14_data_mean_dm), t(multiomics_14_single_features_data_mean_dm), method = "pearson")
 
 hm_single_to_consensus_cors <- Heatmap(single_to_consensus_cors, 
                                             column_title = "single to consensus clustering correlations",
@@ -511,7 +509,7 @@ hm_single_to_consensus_cors
 #find set differences between single seed modules 2 and 9 and consensus modules 9 and 10 respectively.
 cluster2_single <- multiomics_combined14_single %>%
   filter(Cluster == "2")
-cluster4_consensus <- multiomics_14_features_data_ann %>%
+cluster4_consensus <- multiomics_14_data_ann %>%
   filter(Cluster == "4")
 cluster2_inters <- intersect(cluster2_single$feature_type, cluster4_consensus$feature_type)
 cluster2_dif <- setdiff(cluster2_single$feature_type, cluster4_consensus$feature_type)
@@ -521,13 +519,13 @@ multiomics_combined14_single_2_9 <- multiomics_combined14_single %>%
   filter(Cluster %in% c("2","9")) %>%
   rename(Single_Clustering = Cluster) %>%
   select(feature_type, Single_Clustering)
-multiomics_14_features_data_ann_4_10 <- multiomics_14_features_data_ann %>%
+multiomics_14_data_ann_4_10 <- multiomics_14_data_ann %>%
   filter(Cluster %in% c("4", "10")) %>%
   rename(Consensus_Clustering =Cluster) %>%
   mutate(Consensus_Clustering = as.character(Consensus_Clustering)) %>%
 select(Consensus_Clustering, feature_type)
 clustering_module_comparisons <- multiomics_combined14_single_2_9 %>%
- full_join(multiomics_14_features_data_ann_4_10, by = "feature_type") %>%
+ full_join(multiomics_14_data_ann_4_10, by = "feature_type") %>%
   mutate(Both = case_when(!is.na(Single_Clustering)&!is.na(Consensus_Clustering) ~ "x",
                           TRUE ~ ""))
  write_csv(clustering_module_comparisons, "../multiomics_analysis/tables/MDD_multiomics_cl1_cl9_comparisons.csv")
@@ -540,61 +538,13 @@ clustering_module_comparisons <- multiomics_combined14_single_2_9 %>%
  #Remove the cluster assignments to keep the code similar to the 
 #other dataset processing
 #Remove RNAseq and label rows
-multiomics_14_noRNA_features_data <- multiomics_14_features_data_ann %>%
-  select(-Cluster) %>%
-  filter(!Type == "RNAseq")
-
-#create a numeric matrix with feature row names
-multiomics_14_noRNA_features_dm <- multiomics_14_noRNA_features_data %>%
-  select(all_of(condition_order)) %>%
-  as.matrix() 
-rownames(multiomics_14_noRNA_features_dm) <- multiomics_14_noRNA_features_data$feature_type
-multiomics_14_noRNA_features_dm <- multiomics_14_noRNA_features_dm[!is.nan(multiomics_14_noRNA_features_dm[,1]),]
-
-multiomics_14_noRNA_features_ann <- multiomics_14_features_data_ann %>%
-  select(Cluster, Type, Set)  %>%
-  filter(!Type == "RNAseq")%>%
-  as.data.frame()
-
-if(write_csvs){
-  df <- multiomics_14_features_data_ann %>%
-  filter(!Type == "RNAseq")
-  res <- write_csv(df, "../tables/MDD_multiomics_14_noRNAseq.csv")
-    res <- write_csv(multiomics_14_features_data_mean, "../tables/MDD_multiomics_14_mean.csv")
-}
-#Make heatmap with annotations
-haRow_noRNA_multiomics_14 <- HeatmapAnnotation(df = multiomics_14_noRNA_features_ann,
-                                    which = "row",
-                                    col = list(Cluster = factor(cluster14_cols, levels = cluster14_cols, ordered = TRUE),
-                                               Type = assay_cols,
-                                               Set = c("shared" = "black", ligand_cols)))
-#####
-# hm_multiomics_14_noRNA <- Heatmap(multiomics_14_noRNA_features_dm,
-#                        name = "lfc rr",
-#                        column_title = "multiomics_14 features, no RNAseq",
-#                        column_title_gp = gpar(fontsize = 12),
-#                        col = colorRamp2(c(-1.5, 0, 1.5), c("#2166AC", "white", "#B2182B")),
-#                        cluster_rows = FALSE,
-#                        cluster_row_slices = FALSE, 
-#                        cluster_columns = FALSE,
-#                        row_split = multiomics_14_noRNA_features_ann$Cluster,
-#                        row_gap = unit(2, "mm"),
-#                        row_title = " ",
-#                        show_row_names = TRUE,
-#                        row_names_gp = gpar(fontsize = 2.5),
-#                        column_names_gp = gpar(fontsize = 10),
-#                        left_annotation = haRow_noRNA_multiomics_14,
-#                        use_raster = FALSE)
-# hm_multiomics_14_noRNA
 
 #####
 if(create_pdfs){
-  pdf("../plots/MDD_multiomics_heatmaps.pdf",height = 10) 
-  draw(hm_multiomics_14)
+  pdf("..//multiomics_analysis/plots/MDD_multiomics_heatmap_F5a.pdf",height = 10) 
   draw(hm_multiomics_14_callouts)
-  #draw(hm_multiomics_14_callouts_type)
-  draw(hm_multiomics_14_mean)
-  draw(hm_single_to_consensus_cors)
+  # draw(hm_multiomics_14_mean)
+  # draw(hm_single_to_consensus_cors)
   res <- dev.off()
 } 
 
@@ -618,54 +568,22 @@ selectDerivedFeature <- function(df){
 return(res)
 }
 
-module_features <- multiomics_data_ann %>%
+multiomics_14 <- multiomics_14_data_ann %>%
   arrange(Cluster, Type) %>%
   mutate(Cluster = paste0("module_", Cluster),
          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
   split(.$Cluster) 
 
-res <- write_xlsx(module_features,
-                  path = "../tables/MDD_int_rr_combined18_tables.xlsx")
+res <- write_xlsx(multiomics_14,
+                  path = "../multiomics_analysis/tables/MDD_multiomics_14.xlsx")
 
-multiomics_14_features <- multiomics_14_features_data_ann %>%
+res <- multiomics_14_data_ann %>%
   arrange(Cluster, Type) %>%
   mutate(Cluster = paste0("module_", Cluster),
          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
-  split(.$Cluster) 
+  write_csv(file = "../multiomics_analysis/tables/MDD_multiomics_14.csv")
 
-res <- write_xlsx(multiomics_14_features,
-                  path = "../tables/MDD_int_rr_multiomics_14_tables.xlsx")
-
-##### Randomized cluster assignments for null set analysis
-module_features_null <- multiomics_data_ann %>%
-    mutate(Cluster = Cluster[sample(nrow(multiomics_data_ann))]) %>%
-  arrange(Cluster, Type) %>%
-  mutate(Cluster = paste0("module_", Cluster),
-         Cluster = factor(Cluster, levels = unique(Cluster))) %>%
-  split(.$Cluster) 
-
-res <- write_xlsx(module_features_null,
-                  path = "../tables/MDD_int_rr_combined18_tables_null.xlsx")
-# #####
-# module_features <- shared_features_data_ann %>%
-#   arrange(Cluster, Type) %>%
-#   mutate(Cluster = paste0("module_", Cluster),
-#          Cluster = factor(Cluster, levels = unique(Cluster))) %>%
-#   split(.$Cluster) 
-# 
-# res <- write_xlsx(module_features,
-#                   path = "MDD_int_rr_shared_tables.xlsx")
-
-module_features <- unique_features_data %>%
-  arrange(Cluster, Type) %>%
-  mutate(Cluster = paste0("module_", Cluster),
-         Cluster = factor(Cluster, levels = unique(Cluster))) %>%
-  split(.$Cluster) 
-
-res <- write_xlsx(module_features,
-                  path = "../tables/MDD_int_rr_unique_tables.xlsx")
-
-res <- write_csv(multiomics_14_features_data_mean, "../tables/MDD_multiomics_14_mean.csv")
+#res <- write_csv(multiomics_14_data_mean, "../multiomics_analysis/tables/MDD_multiomics_14_mean.csv")
 
 ```
 
@@ -1207,10 +1125,10 @@ if(create_pdfs){
 #Generate a 2d scatterplot of the UMAP dimensions and color by clusters, assay type
 
 #Create annotation values
-dm <- multiomics_14_features_data_ann %>%
+dm <- multiomics_14_data_ann %>%
   dplyr::select(-feature, -Cluster, -Type, -feature_type, -Set) %>%
   as.matrix()
-rownames(dm) <- multiomics_14_features_data_ann$feature_type
+rownames(dm) <- multiomics_14_data_ann$feature_type
 
 custom_settings = umap.defaults
 custom_settings$random_state <- 42
@@ -1224,7 +1142,7 @@ df_UMAP <- umap(dm, config = custom_settings, na.rm = TRUE)$layout %>%
   data.frame(feature_type = rownames(dm)) %>%
   rename(UMAP_1 = X1,
          UMAP_2 = X2) %>%
-  left_join(multiomics_14_features_data_ann, by = "feature_type") 
+  left_join(multiomics_14_data_ann, by = "feature_type") 
 save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP.rda"))
 }
 
@@ -1377,11 +1295,11 @@ if(create_pdfs) {
 }
 
 #Now create a version of RNAseq features only
-dm <- multiomics_14_features_data_ann %>%
+dm <- multiomics_14_data_ann %>%
   filter(Type == "RNAseq") %>%
   dplyr::select(-feature, -Cluster, -Type, -feature_type, -Set) %>%
   as.matrix()
-rownames(dm) <- multiomics_14_features_data_ann %>%
+rownames(dm) <- multiomics_14_data_ann %>%
     filter(Type == "RNAseq") %>%
   pull(feature_type)
 
@@ -1397,7 +1315,7 @@ df_UMAP <- umap(dm, config = custom_settings, na.rm = TRUE)$layout %>%
   data.frame(feature_type = rownames(dm)) %>%
   rename(UMAP_1 = X1,
          UMAP_2 = X2) %>%
-  left_join(multiomics_14_features_data_ann, by = "feature_type") 
+  left_join(multiomics_14_data_ann, by = "feature_type") 
 save(df_UMAP, file = paste0("../integrated_analysis/MDD_",cluster_method,"_multiomics_14_UMAP_RNAseq.rda"))
 }
 
@@ -1454,19 +1372,14 @@ if(create_pdfs) {
 ```{r correlate_to_phenotypes}
 
 #start with level 3 IF data from synapse
-level3File <- paste0("../IF/Data/MDD_IF_Level3.csv")
-raw_df <- read_csv(level3File)
-colnames(raw_df) <- raw_df[raw_df$X1 == "specimenName",]
-
-#filter to 24 and 48 hour
-if_df <- raw_df %>%
-  select(matches("specimenName|24_C2|48_C2")) %>%
-  rename(feature = specimenName) %>%
+if_df <- read_csv("../Immunofluorescence/Data/MDD_IF_Level3.csv",skip = 1) %>%
+  rename("feature" = "specimenName") %>%
   filter(str_detect(feature, "_")) %>%
+  select(matches("feature|24_C2|48_C2")) %>%
   mutate(across(-feature, as.numeric)) %>%
   pivot_longer(cols = matches("_C2_")) %>%
   mutate(condition = str_remove(name, "_C2_.$")) %>%
-    mutate(condition = str_replace(condition, "BMP2","BMP2+EGF"),
+  mutate(condition = str_replace(condition, "BMP2","BMP2+EGF"),
          condition = str_replace(condition, "IFNG","IFNG+EGF"),
          condition = str_replace(condition, "TGFB","TGFB+EGF")) %>%
   group_by(feature, condition) %>%
@@ -1475,407 +1388,122 @@ if_df <- raw_df %>%
   pivot_wider(names_from = condition, values_from = value) %>%
   select(feature, all_of(condition_order))
 
-#Look for correlations between GCP and EdU-based signals
-#Prep GCP data to merge with IF
-GCP <- assay_pk_data %>%
-  filter(Type == "GCP",
-         experimentalTimePoint %in% c(24, 48)) %>%
-  mutate(condition = paste0(ligand, "_", experimentalTimePoint)) %>%
-  select(feature, condition, value)
-
-GCP_IF <- raw_df %>%
-select(matches("specimenName|24_C2|48_C2")) %>%
-  rename(feature = specimenName) %>%
-  filter(str_detect(feature, "_")) %>%
-  mutate(across(-feature, as.numeric)) %>%
-  pivot_longer(cols = matches("_C2_")) %>%
-  mutate(condition = str_remove(name, "_C2_.$")) %>%
-  group_by(feature, condition) %>%
-  summarise(value = mean(value), .groups = "drop") %>%
-  ungroup() %>%
-  bind_rows(GCP) %>%
-    mutate(condition = str_replace(condition, "BMP2","BMP2+EGF"),
-         condition = str_replace(condition, "IFNG","IFNG+EGF"),
-         condition = str_replace(condition, "TGFB","TGFB+EGF")) %>%
-  pivot_wider(names_from = feature, values_from = value)
-#Fix version problem with rrscale
-library(rrscale)
-rrscaleValues <- function(x, zeros = .001, zscore_cutoff = Inf){
-  x_rr <- as.matrix(x) %>%
-    rrscale(zeros = zeros,  z = zscore_cutoff)
-  return(x_rr$RR)
-}
-GCP_IF_dm <-  GCP_IF %>%
-  select(-condition) %>%
-  mutate(across(.fns = ~ rrscaleValues(.x))) %>%
-  as.matrix() 
-  rownames(GCP_IF_dm) <- GCP_IF$condition
-
-   
-GCP_IF_dm_cor <- cor(GCP_IF_dm, method ="pearson")
-
-GCP_IF_cor_hm <- Heatmap(GCP_IF_dm_cor,
-                  name = "pearson\ncorrelation ",
-                  row_names_gp = gpar(fontsize = 5),
-                  column_names_gp = gpar(fontsize = 5),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-GCP_IF_cor_hm
-
-GCP_IF_hm <- Heatmap(t(GCP_IF_dm),cluster_columns = FALSE,
-                  name = "Z scores ",
-                  row_names_gp = gpar(fontsize = 5),
-                  column_names_gp = gpar(fontsize = 5),
-                  col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B")))
-GCP_IF_hm
-
-if(create_pdfs) {
-  pdf("../plots/MDD_GCP_IF_correlations.pdf",
-      width =12, height = 12)
-     res <- draw(GCP_IF_hm)
-     res <- draw(GCP_IF_cor_hm)
-  res <- dev.off()
-}
-#put the GCP-EdU correlation results into a table, with R2, pval and any other metrics you deem important. Please then also indicate which modules these fall into (as I recall, one of the modules was enriched for a lot of GCP features)
-
-#Create a set of scatterplots of all GCP features against Edu_Positive_Proportion
-df <- GCP_IF %>%
-  select(condition, Edu_Positive_Proportion, contains("_GCP")) %>%
-  pivot_longer(cols = contains("_GCP"), names_to = "GCP_feature")
-
-df_cors <- df %>%
-  group_by(GCP_feature) %>%
-  summarise(correlation = cor(x = Edu_Positive_Proportion, y = value)) %>%
-  right_join(df, by = "GCP_feature") %>%
-  arrange(desc(correlation)) %>%
-  mutate(GCP_feature = fct_inorder(GCP_feature))
-
-correlation_pvalue <- function(x,y){
-  #browser()
-  res <- cor.test(x , y, method = "pearson")
-  return(res$p.value)
-}
-df_cors_test <- df %>%
-  group_by(GCP_feature) %>%
-  summarise(R2 = cor(x = Edu_Positive_Proportion, y = value,method = "pearson")^2,
-         p_value = correlation_pvalue(x = Edu_Positive_Proportion, y = value)) %>%
-  right_join(df, by = "GCP_feature") %>%
-  arrange(desc(R2)) %>%
-  mutate(GCP_feature = str_remove(GCP_feature, "_GCP"),
-         GCP_feature = fct_inorder(GCP_feature),
-         R2 = signif(R2, 3),
-         p_value = signif(p_value, 3)) %>%
-  left_join(multiomics_14_features_data_ann, by = c("GCP_feature" = "feature")) %>%
-  select(GCP_feature, Cluster, R2, p_value) %>%
-  distinct()
-
-res <- write_csv(df_cors_test, "../tables/MDD_GCP_EdU_correlations.csv")
-
-p <- ggplot(df_cors, aes(x = Edu_Positive_Proportion, y = value, color = condition)) +
-  geom_point() +
-  facet_wrap(~GCP_feature, scales = "free_y",ncol = 4)
-p
-
-p_fit <- ggplot(df_cors, aes(x = Edu_Positive_Proportion, y = value)) +
-  geom_point() +
-  geom_smooth(method = "lm") +
-  facet_wrap(~GCP_feature, scales = "free_y",ncol = 4)
-p_fit
-
-if(create_pdfs) {
-  pdf("../plots/MDD_GCP_IF_EdU_scatterplots.pdf",
-      width =12, height = 20)
-  print(p_fit)
-  print(p)
-  res <- dev.off()
-}
-
-  #Add migration data in the same format
-migration <- read_csv("../integrated_analysis/Data/MDD_migration_distance_lineage_T0.csv") %>%
+if_df_migration <- read_csv("../Immunofluorescence/Data//MDD_migration_distance_lineage_T0.csv") %>%
   filter(thour %in%c(24, 48),
          !treatment == "PBS") %>%
-    mutate(condition = paste0(treatment,"_",thour),
-           feature = "migration_distance")  %>%
+  mutate(condition = paste0(treatment,"_",thour),
+         feature = "migration_distance")  %>%
   select(-treatment, -thour) %>%
-  pivot_wider(names_from = condition, values_from = lineage_length_mean)
-
-if_df_migration <- if_df %>%
-  bind_rows(migration) 
-
-if_dm <- if_df_migration %>%
-  select(-feature) %>%
-  as.matrix()
-  rownames(if_dm) <- if_df_migration$feature
-  
-# multiomics_14_features_data_mean_df <- multiomics_14_features_data_ann %>%
-#   group_by(Cluster) %>%
-#       summarise(across(.cols = matches("_24|48"), .fns = mean)) %>%
-#     ungroup() %>%
-#   mutate(Cluster = paste0("Module_",as.integer(Cluster)))
-# multiomics_14_features_data_mean_dm <- multiomics_14_features_data_mean_df %>%
-#   select(-Cluster) %>%
-#   as.matrix()
-# rownames(multiomics_14_features_data_mean_dm) <- multiomics_14_features_data_mean_df$Cluster
-  
-if_module_dm <- rbind(multiomics_14_features_data_mean_dm, if_dm) %>%
-  t
-  
-cor_dm <- cor(if_module_dm, method ="pearson")
-
-cor_hm <- Heatmap(cor_dm,
-                  name = "pearson\ncorrelation ",
-                  row_names_gp = gpar(fontsize = 6),
-                  column_names_gp = gpar(fontsize = 6),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-cor_hm
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_IF_correlations.pdf")
-  res <- print(cor_hm)
-  res <- dev.off()
-}
-
-#Reduce phenotype set
-if_module_dm_reduced <- if_module_dm[,str_detect(colnames(if_module_dm),"Module|Well_Cell_Count|Mean_Cells_per_Cluster|Normalized_Second_Neighbor_Dist|DNA2n_Proportion|Edu_Positive_Proportion|MeanIntensity_KRT5|StdIntensity_KRT5|MinIntensity_KRT5|_Negative|_Positive|migration_distance")]
-cor_dm <- cor(if_module_dm_reduced,  method ="pearson")
-
-cor_hm <- Heatmap(cor_dm,
-                   name = "pearson\ncorrelation",
-                  row_names_gp = gpar(fontsize = 10),
-                  column_names_gp = gpar(fontsize = 10),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-cor_hm
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_IF_correlations_reduced.pdf",
-      width = 9, height = 8)
-  res <- print(cor_hm)
-  res <- dev.off()
-}
-
-#Modules vs IF set
-if_modules_dm <- if_module_dm[,!str_detect(colnames(if_module_dm), "_")]
-
-if_phenotypes_dm <- if_module_dm[,str_detect(colnames(if_module_dm), "Well_Cell_Count|Mean_Cells_per_Cluster|Normalized_Second_Neighbor_Dist|DNA2n_Proportion|Edu_Positive_Proportion|MeanIntensity_KRT5|migration_distance")]
-
-cor_dm <- cor(if_modules_dm, if_phenotypes_dm,  method ="pearson")
-cor_dm_spearman <- cor(if_modules_dm, if_phenotypes_dm,  method ="spearman")
-
-res <- cor_dm %>%
-  as.data.frame() %>%
-  rownames_to_column("module") %>%
-  mutate(across(where(is.numeric), signif, digits = 3)) %>%
-write_csv( "../tables/MDD_integrated_module_phenotype_correlations_pearson.csv")
-
-modules <- as.data.frame(if_modules_dm) %>%
-  rename_with(~ paste0("module_", .x)) %>%
-  rownames_to_column()
-
-phenotypes_modules <- as.data.frame(if_phenotypes_dm) %>%
-  rownames_to_column() %>%
-  left_join(modules, by = "rowname")
-
-comps <-expand_grid(module = paste0("module_",colnames(if_modules_dm)), phenotype = colnames(if_phenotypes_dm),)
-
-module_phenotype_spearman <- comps %>%
-  mutate(cor_test = map2(module, phenotype, ~cor.test(unlist(phenotypes_modules[,.x]), unlist(phenotypes_modules[,.y]), method = "spearman")), 
-         cor_value = map_dbl(cor_test, "estimate"),                  
-         cor_p_value = map_dbl(cor_test, "p.value"),
-         FDR = p.adjust(cor_p_value, method = "BH")) %>%
-  select(-cor_test) %>%
-  arrange(FDR)
-
-write_csv(module_phenotype_spearman, "../tables/MDD_integrated_module_phenotype_correlations_spearman.csv")
-
-#volcano plots of -log(FDR) vs correlation
-p_volcano <- ggplot(module_phenotype_spearman, aes(cor_value, -log10(cor_p_value), label = paste(module, phenotype, sep = "_"))) +
-  geom_point() +
-  geom_text(data = filter(module_phenotype_spearman, FDR <  .1), size = 2, position = position_jitter(height = .05))+
-  coord_cartesian(xlim = c(-1.5, 1.5)) +
-  labs(title = "Module-to-phenotype correlations") +
-  theme_bw()
-p_volcano
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_module_phenotype_correlations_volcano.pdf",
-      width = 6, height = 4)
-  res <- print(p_volcano)
-  res <- dev.off()
-}
-
-cor_hm <- Heatmap(cor_dm,
-                  name = "pearson\ncorrelation",
-                  row_names_gp = gpar(fontsize = 10),
-                  column_names_gp = gpar(fontsize = 10),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-cor_hm
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_module_phenotype_correlations_reduced.pdf",
-      width = 9, height = 8)
-  res <- print(cor_hm)
-  res <- dev.off()
-}
-
-###
-# Scatterplots of module activity vs. phenotype--ie, the data underlying the heat map. We are principally interested in Module9 vs. proliferation metrics, but it would be good to have for all comparisons
-#format data DE data for cluster+condition mean vs phenotype value with
-#module~phenotype facets, color by ligand, size by time
-module_mean_data_ann <- multiomics_14_features_data_mean %>%
-  pivot_longer(cols = -Cluster, names_to = "condition", values_to = "module_value") %>%
-  mutate(ligand = str_remove(condition, "_.*"),
-         time = str_remove(condition, ".*_") %>% as.integer) %>%
-  rename(module = Cluster)
+  pivot_wider(names_from = condition, values_from = lineage_length_mean) %>%
+  bind_rows(if_df) 
 
 phenotype_data_ann <- if_df_migration %>%
   filter(str_detect(feature, "Well_Cell_Count|Mean_Cells_per_Cluster|Normalized_Second_Neighbor_Dist|DNA2n_Proportion|Edu_Positive_Proportion|MeanIntensity_KRT5|migration_distance")) %>%
- pivot_longer(cols = -feature, names_to = "condition", values_to = "phenotype_value") %>%
+  pivot_longer(cols = -feature, names_to = "condition", values_to = "phenotype_value") %>%
   group_by(feature) %>%
   mutate(phenotype_value = scale(phenotype_value)) %>%
   ungroup()
 
-module_phenotype_data_ann <- inner_join(module_mean_data_ann, phenotype_data_ann, by = "condition")
-
-p <- ggplot(module_phenotype_data_ann, aes(x = module_value, y = phenotype_value, color = ligand, size = time)) +
-  geom_point(alpha = .8) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(2, 4)) +
-  facet_grid(module~feature) + 
-   guides(colour = guide_legend(override.aes = list(size = 4)),
-           size = guide_legend(override.aes = list(shape = 19))) +
-    theme_bw() +
-    theme(axis.title = element_blank(),
-          #axis.ticks = element_blank(),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5))
-p
-
-FDR_thresh <- 0.1
-df <- module_phenotype_spearman %>%
-  mutate(module = str_remove(module, "module_")) %>%
-  filter(FDR <= FDR_thresh,
-         !str_detect(phenotype, "MinIntensity")) %>%
-  left_join(module_phenotype_data_ann, by = c("phenotype" = "feature", "module" = "module"))
-
-p_signif <- ggplot(df, aes(x = module_value, y = phenotype_value, color = ligand, size = time)) +
-  geom_point(alpha = .8) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(2, 4)) +
-  facet_wrap(~phenotype+module, nrow = 1) + 
-   guides(color = guide_legend(override.aes = list(size = 1)),
-           size = guide_legend(override.aes = list(shape = 19, size = 1))) +
-    theme_bw() +
-    theme(axis.title = element_blank(),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5),
-          strip.background = element_blank(),
-          legend.title = element_text(size = 1),
-          legend.text = element_text(size = 1))
-p_signif
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_module_phenotype_scatterplots_signif.pdf",
-      width =8, height = 2)
-  res <- print(p_signif)
-  res <- dev.off()
-}
+module_phenotype_data_ann <- multiomics_14_data_mean %>%
+  pivot_longer(cols = -Cluster, names_to = "condition", values_to = "module_value") %>%
+  mutate(ligand = str_remove(condition, "_.*"),
+         time = str_remove(condition, ".*_") %>% as.integer) %>%
+  rename(module = Cluster) %>%
+  inner_join(phenotype_data_ann, by = "condition")
 
 df <- module_phenotype_data_ann %>%
-  filter(module == "9",
+  filter(module == "10",
          feature == "Edu_Positive_Proportion")
 
-p_mod9_edu <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
+p_mod10_edu <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm") +
- geom_point(aes(color = ligand, size = time), alpha = .9) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
-  labs(title = "Module 9 EdU positive proportion vs module",
+  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  scale_color_manual(values = ligand_cols) +
+  scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
+  labs(title = "Module 10 EdU positive proportion vs module",
        x = "Module expression",
        y = "EdU positive proportion") +
-   guides(color = guide_legend(override.aes = list(size = 4)),
-           size = guide_legend(override.aes = list(shape = 19))) +
-    theme_bw() +
-    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5))
-p_mod9_edu
-
+  guides(color = guide_legend(override.aes = list(size = 4)),
+         size = guide_legend(override.aes = list(shape = 19))) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = 3.5))
+p_mod10_edu
 
 df <- module_phenotype_data_ann %>%
-  filter(module == "10+15",
+  filter(module == "9+18",
          feature == "Mean_Cells_per_Cluster")
 
-p_mod10_15_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
+p_mod9_18_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm") +
- geom_point(aes(color = ligand, size = time), alpha = .9) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
-  labs(title = "Module 10+15 Mean_Cells_per_Cluster proportion vs module",
+  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  scale_color_manual(values = ligand_cols) +
+  scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
+  labs(title = "Module 9+18 Mean_Cells_per_Cluster proportion vs module",
        x = "Module expression",
        y = "Mean cells per cluster") +
-   guides(color = guide_legend(override.aes = list(size = 4)),
-           size = guide_legend(override.aes = list(shape = 19))) +
-    theme_bw() +
-    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5))
-p_mod10_15_mcc
+  guides(color = guide_legend(override.aes = list(size = 4)),
+         size = guide_legend(override.aes = list(shape = 19))) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = 3.5))
+p_mod9_18_mcc
 
 df <- module_phenotype_data_ann %>%
-  filter(module == "11",
+  filter(module == "7",
          feature == "Mean_Cells_per_Cluster")
 
-p_mod11_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
+p_mod7_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm") +
- geom_point(aes(color = ligand, size = time), alpha = .9) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
-  labs(title = "Module 11 Mean_Cells_per_Cluster proportion vs module",
+  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  scale_color_manual(values = ligand_cols) +
+  scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
+  labs(title = "Module 7 Mean_Cells_per_Cluster proportion vs module",
        x = "Module expression",
        y = "Mean cells per cluster") +
-   guides(color = guide_legend(override.aes = list(size = 4)),
-           size = guide_legend(override.aes = list(shape = 19))) +
-    theme_bw() +
-    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5))
-p_mod11_mcc
+  guides(color = guide_legend(override.aes = list(size = 4)),
+         size = guide_legend(override.aes = list(shape = 19))) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = 3.5))
+p_mod7_mcc
 
 df <- module_phenotype_data_ann %>%
-  filter(module == "8+17",
+  filter(module == "2+8",
          feature == "Normalized_Second_Neighbor_Dist")
 
-p_mod8_17_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
+p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm") +
- geom_point(aes(color = ligand, size = time), alpha = .9) +
-    scale_color_manual(values = ligand_cols) +
-    scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
-  labs(title = "Module 8+17 Normalized_Second_Neighbor_Dist proportion vs module",
+  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  scale_color_manual(values = ligand_cols) +
+  scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
+  labs(title = "Module 2+8 Normalized_Second_Neighbor_Dist proportion vs module",
        x = "Module expression",
        y = "Normalized second neighbor dist") +
-   guides(color = guide_legend(override.aes = list(size = 4)),
-           size = guide_legend(override.aes = list(shape = 19))) +
-    theme_bw() +
-    theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.text.x = element_text(size = 3.5))
-p_mod8_17_nsnd
+  guides(color = guide_legend(override.aes = list(size = 4)),
+         size = guide_legend(override.aes = list(shape = 19))) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text.x = element_text(size = 3.5))
+p_mod2_8_nsnd
 
 if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_module_phenotype_scatterplots.pdf",
-      width =8, height = 14)
-  res <- print(p)
+  pdf("../multiomics_analysis/plots/MDD_multiomics_F5d.pdf")
+  res <- print(p_mod10_edu)
   res <- dev.off()
-}
-
-if(create_pdfs) {
-  pdf("../plots/MDD_multiomics_14_module_vs_phenotypes_scatterplots.pdf")
-  res <- print(p_mod9_edu)
-    res <- print(p_mod10_15_mcc)
-   res <- print(p_mod11_mcc)
-    res <- print(p_mod8_17_nsnd) 
-    res <- dev.off()
+  pdf("../multiomics_analysis/plots/MDD_multiomics_F5e.pdf")
+  res <- print(p_mod9_18_mcc)
+  res <- dev.off() 
+  pdf("../multiomics_analysis/plots/MDD_multiomics_F5f.pdf")
+  res <- print(p_mod7_mcc)
+  res <- dev.off() 
+  pdf("../multiomics_analysis/plots/MDD_multiomics_F5g.pdf")
+  res <- print(p_mod2_8_nsnd)
+  res <- dev.off()
 }
 
 ```
@@ -1932,32 +1560,19 @@ if(create_pdfs) {
 # } 
 
 #create a bar chart of the multiomics_14 feature types
-df <- multiomics_14_features_data %>%
+df <- multiomics_14_data_ann %>%
   #drop_na() %>%
   select(feature, Type) %>%
   distinct()
 
-p <- ggplot(df, aes(x = Type, fill = Type)) +
-  geom_bar() +
-  coord_cartesian(ylim = c(0, 10000)) +
-  scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "features at unique timepoints in the multiomics_14-features MDD integrated dataset"),
-       x ="Feature type") +
-  theme_bw()+
-  theme(axis.text.x =  element_text(angle = 90),
-    axis.ticks = element_blank(),
-    panel.border = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line =element_blank())
-p
 
 p_log <- ggplot(df, aes(x = Type, fill = Type)) +
   geom_bar() +
   scale_y_log10() +
   scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Type distribution of the",length(unique(paste0(df$feature))), "multiomics_14 features at unique timepoints in the MDD integrated dataset"),
-       x ="Feature type") +
+  labs(title = "Multiomics assay features",
+       x ="",
+       y = "Feature Count (log scaled)") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
     axis.ticks = element_blank(),
@@ -1968,16 +1583,13 @@ p_log <- ggplot(df, aes(x = Type, fill = Type)) +
 
 p_log
 if(create_pdfs){
-  pdf("../plots/MDD_multiomics_14_feature_type_distribution.pdf")
-  print(p)  
-  res <- dev.off()
-  pdf("../plots/MDD_multiomics_14_feature_type_distribution_log_scale.pdf")
+  pdf("../multiomics_analysis/plots/MDD_multiomics_SF6a.pdf")
   print(p_log)
   res <- dev.off()
 } 
 
-#bar chart of the multiomics_14 shared adn ligands
-df <- multiomics_14_features_data_ann %>%
+#bar chart of the multiomics_14 shared andligands
+df <- multiomics_14_data_ann %>%
   count(Set, Cluster) %>%
   mutate(Cluster = factor(Cluster, levels = names(cluster14_cols), ordered = TRUE),
          Set = factor(Set, levels = c(ligand_order, "shared"), ordered = TRUE))
@@ -1985,7 +1597,7 @@ df <- multiomics_14_features_data_ann %>%
 feature_dist <- ggplot(df, aes(x = Set, y = n)) +
   geom_col() +
   scale_fill_manual(values = assay_cols)+
-  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_features_data_ann$feature))), "multiomics_14 features"),
+  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_data_ann$feature))), "multiomics_14 features"),
        x ="Type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2001,7 +1613,7 @@ feature_dist
 feature_dist_fill <- ggplot(df, aes(x = Set, y = n, fill = Set)) +
   geom_col() +
   scale_fill_manual(values = c(ligand_cols, "shared" = "black")) +
-  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_features_data_ann$feature))), "multiomics_14 features"),
+  labs(title = paste("Distribution of the",length(unique(paste0(multiomics_14_data_ann$feature))), "multiomics_14 features"),
        x ="Type") +
   theme_bw()+
   theme(axis.text.x =  element_text(angle = 90),
@@ -2027,7 +1639,7 @@ if(write_csvs){
   res <- write_csv(df_wide, path = "../tables/MDD_integrated_feature_distribution.csv")
 }
 
-# df <- multiomics_14_features_data_ann %>%
+# df <- multiomics_14_data_ann %>%
 #   pivot_longer(cols = matches("_[[:digit:]]"), names_to = "condition") %>%
 #   mutate(ligand = str_remove(condition, "_.*"))
 # p <- ggplot(df, aes(x = condition, fill = ligand)) +
@@ -2243,7 +1855,7 @@ if(create_pdfs){
 } 
 
 #multiomics_14 cluster analysis
-p_hist <- ggplot(multiomics_14_features_data_ann, aes(x = as.factor(Cluster), fill = Type)) +
+p_hist <- ggplot(multiomics_14_data_ann, aes(x = as.factor(Cluster), fill = Type)) +
   geom_bar(position = "dodge") +  
   scale_fill_manual(values = assay_cols) +
   labs(title = "multiomics_14 cluster analysis",
@@ -2269,7 +1881,7 @@ if(create_pdfs){
   res <- dev.off()
 } 
 
-df <- multiomics_14_features_data_ann %>%
+df <- multiomics_14_data_ann %>%
   group_by(Type, Cluster) %>%
   count() %>%
   ungroup()
@@ -2501,7 +2113,7 @@ multiomics_14_RNAseq_features_data_ann <- combined18_RNAseq_data_ann %>%
 multiomics_14_RNAseq_clusters <- multiomics_14_RNAseq_features_data_ann %>%
   select(feature_type, Cluster)
 
-df <- multiomics_14_features_data_ann %>%
+df <- multiomics_14_data_ann %>%
   filter(Type == "RNAseq") %>%
   select(feature_type, Cluster) %>%
   rename(Integrated_cluster = Cluster) %>%
@@ -2565,7 +2177,7 @@ left_join(im_14_RNAseq_clusters, by = "feature_type") %>%
 cf_14_matrix <- confusionMatrix(df_14$RNAseq_cluster, reference = df_14$Integrated_cluster)
 
 #14 Int clusters and 14 RNAseq clusters
-df_int14 <- multiomics_14_features_data_ann %>%
+df_int14 <- multiomics_14_data_ann %>%
  select(feature_type, Cluster) %>%
   filter(str_detect(feature_type, "RNAseq")) %>%
   rename(Integrated_cluster = Cluster) %>%
@@ -2737,7 +2349,7 @@ res = dev.off()
 #use multiomics_14 cluster assignment in heatmap
 
 #need to rename cycIF intensity features to match names in T0 Norm dataset
-cluster_assignments <- multiomics_14_features_data_ann %>%
+cluster_assignments <- multiomics_14_data_ann %>%
   select(Cluster, feature_type) %>%
   mutate(feature_type = case_when(str_detect(feature_type, "int_mean_") ~str_replace(feature_type,  "_.*int_mean_.*_cycIF", "_cycIF"),
                                   TRUE ~feature_type))
@@ -2746,7 +2358,7 @@ ligand_order_all_times <- paste(rep(ligand_order, each = 5), rep(c(1,4,8,24,48),
   ligand_order_all_times <- factor(ligand_order_all_times, levels = ligand_order_all_times, ordered = TRUE)
   
 #convert cycIF features to the average cell intensity values
-cycIF_multiomics_14_features_int <- multiomics_14_features_data_ann %>%
+cycIF_multiomics_14_features_int <- multiomics_14_data_ann %>%
   filter(Type == "cycIF",
          str_detect(feature, "_int_mean")) %>%
   mutate(feature = str_remove(feature, "_.*")) %>%
@@ -2757,7 +2369,7 @@ cycIF_multiomics_14_features_int <- multiomics_14_features_data_ann %>%
 
 #the T0 values don't map to the DE features so clusters can not be assigned
 #some cyto vs nuc are in different clusers
-multiomics_14_features_with_cycIF_int <- c(multiomics_14_features_data_ann$feature_type, cycIF_multiomics_14_features_int$feature_type)
+multiomics_14_features_with_cycIF_int <- c(multiomics_14_data_ann$feature_type, cycIF_multiomics_14_features_int$feature_type)
   
 #reformat raw assay metadata to match T0_DE
 matched_features_types <- assay_pk_data %>%
