@@ -358,7 +358,7 @@ hm_multiomics_14_callouts
 
 
 if(create_pdfs){
-  pdf("..//multiomics_analysis/plots/MDD_multiomics_heatmap_F5a.pdf",height = 10) 
+  pdf("../multiomics_analysis/plots/MDD_F5a.pdf",height = 10) 
   draw(hm_multiomics_14_callouts)
   res <- dev.off()
 } 
@@ -680,7 +680,7 @@ if(file.exists(paste0("../multiomics_analysis/data/gss_",cluster_method,"_combin
 
   plot_gap_custom(gss_combined18)
 if(create_pdfs){
-  pdf("../multiomics_analysis/plots/MDD_SFc.pdf")
+  pdf("../multiomics_analysis/plots/MDD_SF6c.pdf")
   p <- plot_gap_custom(gss_combined18)
   print(p)
   res <- dev.off()
