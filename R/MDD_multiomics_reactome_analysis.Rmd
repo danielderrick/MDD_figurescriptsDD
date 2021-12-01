@@ -146,7 +146,7 @@ p <- ggplot(df_selected, aes(x = name,
           axis.text.x = element_text(size = 10, angle = axis.text.x.angle))
   print(p)
   
-  pdf("../multiomics_analysis/plots/MDD_multiomics_F5b.pdf",
+  pdf("../multiomics_analysis/plots/MDD_F5b.pdf",
       width = 7,
       height = 6,
       useDingbats = FALSE)
@@ -203,26 +203,30 @@ parse_entities <- function(stId, entities){
 #                                   stId == "R-HSA-176187" ~"Cell Cycle",
 #                                   stId == "R-HSA-141444" ~"Cell Cycle",
 #                                   stId == "R-HSA-141424" ~"Cell Cycle")) 
-pathways_super <- read_csv("../integrated_analysis/Data/MDD_Reactome_pathways_superpathways.csv")
+pathways_super <- read_csv("../multiomics_analysis/data/MDD_Reactome_pathways_superpathways.csv")
 
 #Read in reactome file from 
-module9_reactome_web <- read_csv("../integrated_analysis/Data/reactome_module9_noProject.csv") %>%
-  janitor::clean_names() %>%
-  filter(str_detect(pathway_identifier, "-HSA-"))
+pathways_10 <- pathways %>%
+  filter(Cluster == "module_10") %>%
+  left_join(pathways_super, by = "stId")
+# 
+# module9_reactome_web <- read_csv("../integrated_analysis/Data/reactome_module9_noProject.csv") %>%
+#   janitor::clean_names() %>%
+#   filter(str_detect(pathway_identifier, "-HSA-"))
+# 
+# #filter to pathways in the dotplot
+# module9_dotplot_genes <- dotplot_pathways %>%
+#   filter(module == 9) %>%
+#   left_join(module9_reactome_web, by = c("stId" ="pathway_identifier")) %>%
+#     select(stId, submitted_entities_found)
+# 
+# gene_pathways <- map2(module9_dotplot_genes$stId, module9_dotplot_genes$submitted_entities_found, parse_entities) %>%
+#   bind_rows() %>%
+#   distinct() %>%
+#   left_join(pathways_super, by = c("stId" = "stId")) %>%
+#   select(gene, stId, superpathway)
 
-#filter to pathways in the dotplot
-module9_dotplot_genes <- dotplot_pathways %>%
-  filter(module == 9) %>%
-  left_join(module9_reactome_web, by = c("stId" ="pathway_identifier")) %>%
-    select(stId, submitted_entities_found)
-
-gene_pathways <- map2(module9_dotplot_genes$stId, module9_dotplot_genes$submitted_entities_found, parse_entities) %>%
-  bind_rows() %>%
-  distinct() %>%
-  left_join(pathways_super, by = c("stId" = "stId")) %>%
-  select(gene, stId, superpathway)
-
-res <- write_csv(gene_pathways, "../tables/MDD_integrated_reactome_module9_genes.csv")
+res <- write_csv(pathways_10, "../multiomics_analysis/tables/MDD_multiomics_Reactome_module10_pathways.csv")
 
 #write out pathways for all genes in module 9
 # pathway_names <- pathways_combined14 %>%
@@ -240,14 +244,14 @@ res <- write_csv(gene_pathways, "../tables/MDD_integrated_reactome_module9_genes
 #                                   stId == "R-HSA-141444" ~"Cell Cycle",
 #                                   stId == "R-HSA-141424" ~"Cell Cycle")) 
 
-gene_pathways_module9 <- map2(module9_reactome_web$pathway_identifier, module9_reactome_web$submitted_entities_found, parse_entities) %>%
-  bind_rows() %>%
-  distinct()  %>%
-  left_join(pathways_super, by = "stId") %>%
-  filter(str_detect(stId, "-HSA-")) %>%
-  mutate(superpathway = case_when(is.na(superpathway) ~"not_annotated",
-                                  TRUE ~superpathway))
-# 
+# gene_pathways_module9 <- map2(module9_reactome_web$pathway_identifier, module9_reactome_web$submitted_entities_found, parse_entities) %>%
+#   bind_rows() %>%
+#   distinct()  %>%
+#   left_join(pathways_super, by = "stId") %>%
+#   filter(str_detect(stId, "-HSA-")) %>%
+#   mutate(superpathway = case_when(is.na(superpathway) ~"not_annotated",
+#                                   TRUE ~superpathway))
+# # 
 # df <- gene_pathways_module9 %>%
 #   mutate(name = make.names(name)) %>%
 #   select(-stId) %>%
@@ -257,36 +261,36 @@ gene_pathways_module9 <- map2(module9_reactome_web$pathway_identifier, module9_r
 
 #heatmap (0 = white, 1 = red) for the attached module 9 gene list clustering both the rows and columns
 
-gene_pathways <- read_xlsx("../integrated_analysis/Data/REACTOME_SUPERPATHWAYS_MODULE9.xlsx")
-
-gene_pathways_dm <- gene_pathways %>%
-  select(-gene) %>%
-  as.matrix()
-rownames(gene_pathways_dm) <- gene_pathways$gene
-gp_hm <- Heatmap(gene_pathways_dm,
-                  name = "Member",
-                  row_names_gp = gpar(fontsize = 4),
-                  column_names_gp = gpar(fontsize = 10),
-                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-  pdf("../plots/MDD_reactome_gene_pathways.pdf",
-      width = 5,
-      height =20,
-      useDingbats = FALSE,)
-  draw(gp_hm)
-  dev_off_res <- dev.off()
+# gene_pathways <- read_xlsx("../integrated_analysis/Data/REACTOME_SUPERPATHWAYS_MODULE9.xlsx")
+# 
+# gene_pathways_dm <- gene_pathways %>%
+#   select(-gene) %>%
+#   as.matrix()
+# rownames(gene_pathways_dm) <- gene_pathways$gene
+# gp_hm <- Heatmap(gene_pathways_dm,
+#                   name = "Member",
+#                   row_names_gp = gpar(fontsize = 4),
+#                   column_names_gp = gpar(fontsize = 10),
+#                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
+#   pdf("../plots/MDD_reactome_gene_pathways.pdf",
+#       width = 5,
+#       height =20,
+#       useDingbats = FALSE,)
+#   draw(gp_hm)
+#   dev_off_res <- dev.off()
 
 ```
 
-```{r module9_patways_vs_superpathways}
+```{r module10_pathways_vs_superpathways}
 
 #Start with module 9 pathways from Reactome
 #Filter to significant pathways
 #Associate pathwayd with superpathway
 #plot superpathwya vs pathway, color by FDR, size by geneRatio
-FDR_thresh_mod9 <- .1
-gene_ratio_thresh_mod9 <- .1
+FDR_thresh_mod10 <- .2
+gene_ratio_thresh_mod10 <- .05
 
-# module9_pathways_selected <- module9_reactome_web %>%
+pathways_10_selected <- pathways_10 %>%
 #   mutate(geneRatio = number_entities_found/number_entities_total) %>%
 #   filter(entities_fdr < FDR_thresh_mod9,
 #          geneRatio > gene_ratio_thresh_mod9) %>%
@@ -295,61 +299,48 @@ gene_ratio_thresh_mod9 <- .1
 #            pathway_name = fct_inorder(pathway_name, ordered = TRUE)) %>%
 #   left_join(pathways_super, by = c("pathway_identifier" = "stId"))
 
-module9_pathways_selected <- module9_reactome_web %>%
-  mutate(geneRatio = number_entities_found/number_entities_total) %>%
-    mutate(pathway_name = str_wrap(pathway_name, 38),
-           pathway_name = fct_inorder(pathway_name, ordered = TRUE)) %>%
-  left_join(pathways_super, by = c("pathway_identifier" = "stId")) %>%
+# module10_pathways_selected <- pathways_10 %>%
+#   mutate(geneRatio = number_entities_found/number_entities_total) %>%
+#     mutate(pathway_name = str_wrap(pathway_name, 38),
+#            pathway_name = fct_inorder(pathway_name, ordered = TRUE)) %>%
+#   left_join(pathways_super, by = c("pathway_identifier" = "stId")) %>%
   group_by(superpathway) %>%
-  select(-mapped_entities) %>%
-  drop_na() %>%
-  slice_min(order_by = c(entities_p_value), n = 5, with_ties = FALSE) %>%
-  ungroup()
+#  select(-mapped_entities) %>%
+#  drop_na() %>%
+  slice_min(order_by = c(fdr), n = 5, with_ties = FALSE) %>%
+  arrange(superpathway, desc(geneRatio))
+pathways_10_selected$name <- factor(pathways_10_selected$name, ordered = TRUE)
 
-p <- ggplot(module9_pathways_selected, aes(x = pathway_name, y = -log10(entities_fdr), fill = superpathway)) +
+
+p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = superpathway)) +
   geom_col() +
   theme_bw() +
   theme(axis.text.x = element_text(size = 20, angle = 90))
 p
-
-p <- ggplot(module9_pathways_selected, aes(x = pathway_name, y = superpathway, size = geneRatio, color = entities_fdr)) +
+  
+pdf("../multiomics_analysis/plots/MDD_F9d.pdf",
+      # width = 3.1,
+      # height =2.5,
+      useDingbats = FALSE,)
+  print(p)
+  dev_off_res <- dev.off()
+  
+p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = str_wrap(name, 25),  size = found, color = fdr)) +
   geom_point() +
-  scale_color_gradient(low = "red",high = "blue") +
-  scale_size(range = c(1,20))+
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 20, angle = 90),
-        axis.text.y = element_text(size = 20))
-p
-
-df <- module9_pathways_selected %>%
-  group_by(superpathway) %>%
-  arrange(geneRatio, .by_group = TRUE) %>%
-  ungroup() %>%
-  mutate(pathway_name =  as.character(pathway_name),
-         pathway_name = fct_inorder(pathway_name))
-
-p <- ggplot(df, aes(x = geneRatio, y =  pathway_name, size = number_entities_found, color = entities_fdr)) +
-  geom_point() +
-  scale_color_gradient(low = "red",high = "blue") +
-  scale_size(range = c(.8, 3))+
-  theme_bw() +
-  labs(title = "Module 9 Reactome Pathway Enrichment",
+  scale_color_gradient(low = "red", high = "blue") +
+  labs(title = "Module 10 Reactome Pathway Enrichment",
        x = "Gene Ratio",
        y = "",
-       size = "Entities Found",
-       color ="Entities FDR") +
-  theme(title = element_text(size = 4),
-        axis.title = element_text(size = 2),
-        axis.text.x = element_text(size = 2.5, angle = 90),
-        axis.text.y = element_text(size = 4, color = "black"),
-        legend.title=element_text(size=4, color = "black"), 
-        legend.text=element_text(size=2, color = "black"),
-        legend.key.size = unit(4,"points"))
+       size = "Genes",
+       color ="FDR") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 7, angle = 90),
+        axis.text.y = element_text(size = 8))
 p
 
-  pdf("../plots/MDD_reactome_module9_selected_pathways.pdf",
-      width = 3.1,
-      height =2.5,
+  pdf("../multiomics_analysis/plots/MDD_F9e.pdf",
+      width = 7,
+      height =9,
       useDingbats = FALSE,)
   print(p)
   dev_off_res <- dev.off()
