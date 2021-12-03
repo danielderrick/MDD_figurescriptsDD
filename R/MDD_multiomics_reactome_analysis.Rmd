@@ -44,33 +44,6 @@ Read in the cluster data from the integrated analysis, filter to RNA features an
    if(!status_code(res) == 200) stop("received API code ", status_code(res))
    pathways <- fromJSON(rawToChar(res$content))$pathways 
    
-   # #get res token
-   # res_token <- fromJSON(rawToChar(res$content))$summary$token
-   # 
-   #   #Identify Reactome  not found genes
-   #   found <- GET(paste0("https://reactome.org/AnalysisService/download/",res_token,"/entities/found/TOTAL/result.csv"),
-   #                    accept("text/plain"))
-   #   reactome_genes <- rawToChar(found$content) %>%
-   #     str_split("\n") %>%
-   #     unlist() %>%
-   #     tibble() %>%
-   #     janitor::clean_names() %>%
-   #     slice(n =-1) %>%
-   #     mutate(Submitted_identifier = str_remove(x, ",.*")) %>%
-   #     pull(Submitted_identifier) %>%
-   #     unique()
-   #   #Check that some of the genes are in reactome
-   #   if(!identical(reactome_genes, "")){
-   #      #submit file of found genes to Reactome
-   # pathway_res <- POST(url = "https://reactome.org/AnalysisService/identifiers/projection/?interactors=false&species=Homo%20sapiens&pageSize=200&page=1&sortBy=ENTITIES_FDR&order=ASC&resource=TOTAL&pValue=1&includeDisease=true",
-   #           body = reactome_genes,
-   #         accept_json(),
-   #             content_type("text/plain"))
-   # 
-   # if(!status_code(pathway_res) == 200) stop("received API code ", status_code(pathway_res))
-   # 
-   # pathways <- fromJSON(rawToChar(pathway_res$content))$pathways 
-   
    pathway_data <- pathways %>%
      select(-entities, -reactions, -species) %>%
      bind_cols(pathways$entities) %>%
@@ -103,7 +76,6 @@ return(pathway_data)
 ```{r create_dotplots}
 
 make_dotplots_API <- function(df, fdr_thresh = .2, gene_ratio_thresh = 0.1, pathway_nbr = 3, min_pathway_genes = 10, max_pathway_genes = 500, pathway_method = NULL, axis.text.x.angle = 0){
-  #browser()
   selected_pathways <- df %>%
     filter(fdr <= fdr_thresh,
            geneRatio >= gene_ratio_thresh,
@@ -190,6 +162,49 @@ parse_entities <- function(stId, entities){
 }
 ####
 
+#Use the Reactome hierarchy to reduce the labels used in the dotplot
+#get parent pathway names
+reactome_pathways <- read_delim("../multiomics_analysis/data/ReactomePathways.txt", 
+    "\t", escape_double = FALSE, col_names = FALSE, 
+    trim_ws = TRUE) %>%
+  rename(stId = X1,
+         name = X2,
+         species = X3) %>%
+  filter(species == "Homo sapiens") %>%
+  select(-species)
+
+#use reactome hierarchy to determine next level up
+reactome_two_levels <- read_table2("../multiomics_analysis/data/ReactomePathwaysRelation.txt",
+                                   col_names = FALSE) %>%
+  rename(parent_stId = X1,
+         child_stId = X2) %>%
+  filter(str_detect(child_stId, "-HSA-"))
+
+reactome_three_levels <- reactome_two_levels %>%
+  left_join(reactome_two_levels, by = c("parent_stId" = "child_stId")) %>%
+  rename(grandparent_stId = parent_stId.y) %>%
+  #copy parent into grandparent if the parent was the terminal pathway
+  mutate(grandparent_stId = case_when(is.na(grandparent_stId) ~ parent_stId,
+                                      TRUE ~grandparent_stId)) %>%
+  left_join(reactome_pathways, by = c("child_stId" = "stId")) %>%
+  rename(child_name = name) %>%
+  left_join(reactome_pathways, by = c("parent_stId" = "stId")) %>%
+  rename(parent_name = name)   %>%
+  left_join(reactome_pathways, by = c("grandparent_stId" = "stId")) %>%
+  rename(grandparent_name = name)
+
+df_selected_three_levels <- pathways %>%
+  left_join(reactome_three_levels, by = c("stId" = "child_stId")) %>%
+  mutate(child_name = case_when(is.na(child_name) ~ as.character(name),
+                                TRUE ~child_name),
+         parent_name = case_when(is.na(parent_name) ~ child_name,
+                                 TRUE ~parent_name),
+         grandparent_name = case_when(is.na(grandparent_name) ~ parent_name,
+                                      TRUE ~grandparent_name)) %>%
+  select(Cluster, child_name, parent_name, grandparent_name, fdr, geneRatio, pValue)
+
+res <- write_csv(df_selected_three_levels, "../tables/MDD_reactome_three_levels.csv")
+
 # pathways_super<- dotplot_pathways %>%
 #   filter(module == "9") %>%
 #   mutate(superpathway = case_when(stId == "R-HSA-69190" ~"DNA Replication",
@@ -203,12 +218,14 @@ parse_entities <- function(stId, entities){
 #                                   stId == "R-HSA-176187" ~"Cell Cycle",
 #                                   stId == "R-HSA-141444" ~"Cell Cycle",
 #                                   stId == "R-HSA-141424" ~"Cell Cycle")) 
+
 pathways_super <- read_csv("../multiomics_analysis/data/MDD_Reactome_pathways_superpathways.csv")
 
 #Read in reactome file from 
 pathways_10 <- pathways %>%
   filter(Cluster == "module_10") %>%
-  left_join(pathways_super, by = "stId")
+  left_join(reactome_three_levels, by = c("stId" = "child_stId")) %>%
+  distinct()
 # 
 # module9_reactome_web <- read_csv("../integrated_analysis/Data/reactome_module9_noProject.csv") %>%
 #   janitor::clean_names() %>%
@@ -288,44 +305,32 @@ res <- write_csv(pathways_10, "../multiomics_analysis/tables/MDD_multiomics_Reac
 #Associate pathwayd with superpathway
 #plot superpathwya vs pathway, color by FDR, size by geneRatio
 FDR_thresh_mod10 <- .2
-gene_ratio_thresh_mod10 <- .05
+gene_ratio_thresh_mod10 <- .2
+
 
 pathways_10_selected <- pathways_10 %>%
-#   mutate(geneRatio = number_entities_found/number_entities_total) %>%
-#   filter(entities_fdr < FDR_thresh_mod9,
-#          geneRatio > gene_ratio_thresh_mod9) %>%
-#   arrange(entities_fdr) %>%
-#     mutate(pathway_name = str_wrap(pathway_name, 32),
-#            pathway_name = fct_inorder(pathway_name, ordered = TRUE)) %>%
-#   left_join(pathways_super, by = c("pathway_identifier" = "stId"))
+  filter(fdr <= FDR_thresh_mod10,
+         geneRatio >= gene_ratio_thresh_mod10) %>%
+  group_by(grandparent_name) %>%
+  slice_min(order_by = c(fdr, geneRatio), n = 5, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(name = fct_inorder(str_trunc(name, 40)))
 
-# module10_pathways_selected <- pathways_10 %>%
-#   mutate(geneRatio = number_entities_found/number_entities_total) %>%
-#     mutate(pathway_name = str_wrap(pathway_name, 38),
-#            pathway_name = fct_inorder(pathway_name, ordered = TRUE)) %>%
-#   left_join(pathways_super, by = c("pathway_identifier" = "stId")) %>%
-  group_by(superpathway) %>%
-#  select(-mapped_entities) %>%
-#  drop_na() %>%
-  slice_min(order_by = c(fdr), n = 5, with_ties = FALSE) %>%
-  arrange(superpathway, desc(geneRatio))
-pathways_10_selected$name <- factor(pathways_10_selected$name, ordered = TRUE)
-
-
-p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = superpathway)) +
+p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = name, fill = grandparent_name)) +
   geom_col() +
   theme_bw() +
+  guides(fill = "none")+
   theme(axis.text.x = element_text(size = 20, angle = 90))
 p
-  
-pdf("../multiomics_analysis/plots/MDD_F9d.pdf",
+
+pdf("../multiomics_analysis/plots/MDD_F6d.pdf",
       # width = 3.1,
       # height =2.5,
       useDingbats = FALSE,)
   print(p)
   dev_off_res <- dev.off()
   
-p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = str_wrap(name, 25),  size = found, color = fdr)) +
+p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = name,  size = found, color = fdr)) +
   geom_point() +
   scale_color_gradient(low = "red", high = "blue") +
   labs(title = "Module 10 Reactome Pathway Enrichment",
@@ -338,13 +343,42 @@ p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = str_wrap(name, 25),  si
         axis.text.y = element_text(size = 8))
 p
 
-  pdf("../multiomics_analysis/plots/MDD_F9e.pdf",
+  pdf("../multiomics_analysis/plots/MDD_F6e.pdf",
       width = 7,
       height =9,
       useDingbats = FALSE,)
   print(p)
   dev_off_res <- dev.off()
 
+```
+
+
+```{r module4_pathways}
+
+pathways_4 <- pathways %>%
+  filter(Cluster == "module_4") %>%
+  left_join(pathways_super, by = "stId")
+
+pathways_4_selected <- pathways_4 %>%
+  filter(pValue <=0.02) %>%
+  slice_min(order_by = c(pValue), n = 10, with_ties = FALSE) %>%
+  arrange(desc(pValue)) %>%
+  mutate(name = fct_inorder(name))
+     
+p <- ggplot(pathways_4_selected, aes(x = -log10(pValue), y = name)) +
+  labs(title = "Module 4 Enriched Reactome Pathways",
+       y = "Pathway") +
+  geom_col() +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 7, angle = 0,color = "black"),
+        axis.text.y = element_text(size = 7, angle = 0,color = "black"))
+p
+  
+pdf("../multiomics_analysis/plots/MDD_F7e.pdf",
+      useDingbats = FALSE,)
+  print(p)
+  dev_off_res <- dev.off()
+  
 ```
 
 ###
