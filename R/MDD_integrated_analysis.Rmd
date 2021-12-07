@@ -823,3 +823,52 @@ if(create_pdfs){
 
 ```
 
+
+#### Analysis of tissue specificity of MDD integrated modules
+
+Read in the file GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct genes with tissue associations
+Annotate the GTEx gene data with the MCF10A module assignments
+Mean summarize the GTEx data by module
+Make heatmaps of the log2(TPM) values with both row and column mean-centering
+
+```{r GTEx_heatmap}
+
+multiomics_14_GTEx <- read_delim("~/Documents/MCF10A MDD/MDD/multiomics_analysis/data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct", 
+    delim = "\t", escape_double = FALSE, 
+    trim_ws = TRUE, skip = 2) %>% 
+  inner_join(multiomics_14_data_ann, by = c("Description" = "feature")) %>%
+  filter(Type == "RNAseq") %>%
+  select(Cluster,!contains("_"), -Name, -Set, -Type, -Description)
+
+multiomics_14_GTEx_mean <- multiomics_14_GTEx %>%
+  group_by(Cluster) %>%
+    summarise_all(.funs = mean)
+
+multiomics_14_GTEx_mean_dm <- multiomics_14_GTEx_mean %>%
+  select(-Cluster) %>%
+  as.matrix() %>%
+  log2() %>%
+  scale() %>%
+  t() %>%
+  scale() %>%
+  t()
+rownames(multiomics_14_GTEx_mean_dm) <- multiomics_14_GTEx_mean$Cluster
+
+hm_GTEx <- Heatmap(multiomics_14_GTEx_mean_dm,
+                  column_title = "GTEx tissue expression in MCF10A modules",
+                   name = "TPM\nmean centered",
+                  row_title = " ",
+                  row_names_gp = gpar(fontsize = 8),
+                  column_names_gp = gpar(fontsize = 7),
+                  col = colorRamp2(c(-2, 0, 2), c("#2166AC", "white", "#B2182B"))
+                  )
+hm_GTEx
+
+
+if(create_pdfs){
+  pdf("../multiomics_analysis/plots/MDD_SF7.pdf")
+  print(hm_GTEx)
+  res <- dev.off()
+} 
+
+```
