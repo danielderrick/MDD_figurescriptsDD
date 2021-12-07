@@ -520,8 +520,8 @@ df <- module_phenotype_data_ann %>%
          feature == "Edu_Positive_Proportion")
 
 p_mod10_edu <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
-  stat_smooth(se = FALSE, method = "lm") +
-  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
+  geom_point(aes(color = ligand, size = time)) +
   scale_color_manual(values = ligand_cols) +
   scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
   labs(title = "Module 10 EdU positive proportion vs module",
@@ -540,8 +540,8 @@ df <- module_phenotype_data_ann %>%
          feature == "Mean_Cells_per_Cluster")
 
 p_mod9_18_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
-  stat_smooth(se = FALSE, method = "lm") +
-  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
+  geom_point(aes(color = ligand, size = time)) +
   scale_color_manual(values = ligand_cols) +
   scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
   labs(title = "Module 9+18 Mean_Cells_per_Cluster proportion vs module",
@@ -560,8 +560,8 @@ df <- module_phenotype_data_ann %>%
          feature == "Mean_Cells_per_Cluster")
 
 p_mod7_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
-  stat_smooth(se = FALSE, method = "lm") +
-  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
+  geom_point(aes(color = ligand, size = time)) +
   scale_color_manual(values = ligand_cols) +
   scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
   labs(title = "Module 7 Mean_Cells_per_Cluster proportion vs module",
@@ -580,8 +580,8 @@ df <- module_phenotype_data_ann %>%
          feature == "Normalized_Second_Neighbor_Dist")
 
 p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
-  stat_smooth(se = FALSE, method = "lm") +
-  geom_point(aes(color = ligand, size = time), alpha = .9) +
+  stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
+  geom_point(aes(color = ligand, size = time)) +
   scale_color_manual(values = ligand_cols) +
   scale_radius(breaks = c(0,1,4, 8, 24, 48), range = c(4, 6)) +
   labs(title = "Module 2+8 Normalized_Second_Neighbor_Dist proportion vs module",
@@ -596,16 +596,16 @@ p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
 p_mod2_8_nsnd
 
 if(create_pdfs) {
-  pdf("../multiomics_analysis/plots/MDD_F5d.pdf")
+  pdf("../multiomics_analysis/plots/MDD_F5d.pdf", useDingbats = TRUE)
   res <- print(p_mod10_edu)
   res <- dev.off()
-  pdf("../multiomics_analysis/plots/MDD_F5e.pdf")
+  pdf("../multiomics_analysis/plots/MDD_F5e.pdf", useDingbats = TRUE)
   res <- print(p_mod9_18_mcc)
   res <- dev.off() 
-  pdf("../multiomics_analysis/plots/MDD_F5f.pdf")
+  pdf("../multiomics_analysis/plots/MDD_F5f.pdf", useDingbats = TRUE)
   res <- print(p_mod7_mcc)
   res <- dev.off() 
-  pdf("../multiomics_analysis/plots/MDD_F5g.pdf")
+  pdf("../multiomics_analysis/plots/MDD_F5g.pdf", useDingbats = TRUE)
   res <- print(p_mod2_8_nsnd)
   res <- dev.off()
 }
@@ -730,7 +730,7 @@ df <- multiomics_14_data_ann %>%
   mutate(Type = case_when(Type == "motifs" ~"ATAC motifs",
                           TRUE ~ Type))
 p_hist <- ggplot(df, aes(x = as.factor(Cluster))) +
-  geom_bar(position = "dodge", fill = "black") +  
+  geom_bar(position = "dodge", fill = "black", width = .8) +  
   #scale_fill_manual(values = assay_cols) +
   labs(title = "Feature distribution across modules",
        x = "",
