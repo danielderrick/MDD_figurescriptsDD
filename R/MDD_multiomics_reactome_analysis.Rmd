@@ -180,143 +180,91 @@ reactome_two_levels <- read_table2("../multiomics_analysis/data/ReactomePathways
          child_stId = X2) %>%
   filter(str_detect(child_stId, "-HSA-"))
 
-reactome_three_levels <- reactome_two_levels %>%
+reactome_five_levels <- reactome_two_levels %>%
   left_join(reactome_two_levels, by = c("parent_stId" = "child_stId")) %>%
-  rename(grandparent_stId = parent_stId.y) %>%
-  #copy parent into grandparent if the parent was the terminal pathway
+  mutate(parent_stId = case_when(is.na(parent_stId) ~ child_stId,
+                                      TRUE ~parent_stId)) %>%
+  rename(grandparent_stId = parent_stId.y) %>%  #copy parent into grandparent if the parent was the terminal pathway
   mutate(grandparent_stId = case_when(is.na(grandparent_stId) ~ parent_stId,
                                       TRUE ~grandparent_stId)) %>%
+  left_join(reactome_two_levels, by = c("grandparent_stId" = "child_stId")) %>%
+  rename(parent_stId = parent_stId.x,
+         great_grandparent_stId = parent_stId.y) %>%
+  mutate(great_grandparent_stId = case_when(is.na(great_grandparent_stId) ~ grandparent_stId,
+                                      TRUE ~great_grandparent_stId)) %>%
+  left_join(reactome_two_levels, by = c("great_grandparent_stId" = "child_stId")) %>%
+  rename(parent_stId = parent_stId.x,
+         great_great_grandparent_stId = parent_stId.y) %>%
+  mutate(great_great_grandparent_stId = case_when(is.na(great_great_grandparent_stId) ~ great_grandparent_stId,
+                                      TRUE ~great_great_grandparent_stId)) %>%
   left_join(reactome_pathways, by = c("child_stId" = "stId")) %>%
   rename(child_name = name) %>%
   left_join(reactome_pathways, by = c("parent_stId" = "stId")) %>%
   rename(parent_name = name)   %>%
   left_join(reactome_pathways, by = c("grandparent_stId" = "stId")) %>%
-  rename(grandparent_name = name)
+  rename(grandparent_name = name) %>%
+  left_join(reactome_pathways, by = c("great_grandparent_stId" = "stId")) %>%
+  rename(great_grandparent_name = name) %>%
+  left_join(reactome_pathways, by = c("great_great_grandparent_stId" = "stId")) %>%
+  rename(great_great_grandparent_name = name)
 
-df_selected_three_levels <- pathways %>%
-  left_join(reactome_three_levels, by = c("stId" = "child_stId")) %>%
+df_selected_five_levels <- pathways %>%
+  left_join(reactome_five_levels, by = c("stId" = "child_stId")) %>%
   mutate(child_name = case_when(is.na(child_name) ~ as.character(name),
                                 TRUE ~child_name),
          parent_name = case_when(is.na(parent_name) ~ child_name,
                                  TRUE ~parent_name),
          grandparent_name = case_when(is.na(grandparent_name) ~ parent_name,
-                                      TRUE ~grandparent_name)) %>%
-  select(Cluster, child_name, parent_name, grandparent_name, fdr, geneRatio, pValue)
+                                      TRUE ~grandparent_name),
+         great_grandparent_name = case_when(is.na(great_grandparent_name) ~ grandparent_name,
+                                      TRUE ~great_grandparent_name),
+         great_great_grandparent_name = case_when(is.na(great_great_grandparent_name) ~ great_grandparent_name,
+                                      TRUE ~great_great_grandparent_name)) %>%
+  select(Cluster, child_name, parent_name, grandparent_name, great_grandparent_name, great_great_grandparent_name, fdr, geneRatio, pValue)
 
-res <- write_csv(df_selected_three_levels, "../tables/MDD_reactome_three_levels.csv")
-
-# pathways_super<- dotplot_pathways %>%
-#   filter(module == "9") %>%
-#   mutate(superpathway = case_when(stId == "R-HSA-69190" ~"DNA Replication",
-#                                   stId == "R-HSA-68962" ~"DNA Replication",
-#                                   stId == "R-HSA-69205" ~"Cell Cycle",
-#                                   stId == "R-HSA-176974" ~"DNA Replication",
-#                                   stId == "R-HSA-69206" ~"Cell Cycle",
-#                                   stId == "R-HSA-69278"  ~"Cell Cycle",
-#                                   stId == "R-HSA-1538133" ~"Cell Cycle",
-#                                   stId == "R-HSA-453279" ~"Cell Cycle",
-#                                   stId == "R-HSA-176187" ~"Cell Cycle",
-#                                   stId == "R-HSA-141444" ~"Cell Cycle",
-#                                   stId == "R-HSA-141424" ~"Cell Cycle")) 
+res <- write_csv(df_selected_five_levels, "../tables/MDD_reactome_five_levels.csv")
 
 pathways_super <- read_csv("../multiomics_analysis/data/MDD_Reactome_pathways_superpathways.csv")
 
-#Read in reactome file from 
 pathways_10 <- pathways %>%
   filter(Cluster == "module_10") %>%
-  left_join(reactome_three_levels, by = c("stId" = "child_stId")) %>%
+  left_join(reactome_five_levels, by = c("stId" = "child_stId")) %>%
   distinct()
-# 
-# module9_reactome_web <- read_csv("../integrated_analysis/Data/reactome_module9_noProject.csv") %>%
-#   janitor::clean_names() %>%
-#   filter(str_detect(pathway_identifier, "-HSA-"))
-# 
-# #filter to pathways in the dotplot
-# module9_dotplot_genes <- dotplot_pathways %>%
-#   filter(module == 9) %>%
-#   left_join(module9_reactome_web, by = c("stId" ="pathway_identifier")) %>%
-#     select(stId, submitted_entities_found)
-# 
-# gene_pathways <- map2(module9_dotplot_genes$stId, module9_dotplot_genes$submitted_entities_found, parse_entities) %>%
-#   bind_rows() %>%
-#   distinct() %>%
-#   left_join(pathways_super, by = c("stId" = "stId")) %>%
-#   select(gene, stId, superpathway)
 
 res <- write_csv(pathways_10, "../multiomics_analysis/tables/MDD_multiomics_Reactome_module10_pathways.csv")
-
-#write out pathways for all genes in module 9
-# pathway_names <- pathways_combined14 %>%
-#   select(stId, name) %>%
-#   distinct()  %>%
-#   mutate(superpathway = case_when(stId == "R-HSA-69190" ~"DNA Replication",
-#                                   stId == "R-HSA-68962" ~"DNA Replication",
-#                                   stId == "R-HSA-69205" ~"Cell Cycle",
-#                                   stId == "R-HSA-176974" ~"DNA Replication",
-#                                   stId == "R-HSA-69206" ~"Cell Cycle",
-#                                   stId == "R-HSA-69278"  ~"Cell Cycle",
-#                                   stId == "R-HSA-1538133" ~"Cell Cycle",
-#                                   stId == "R-HSA-453279" ~"Cell Cycle",
-#                                   stId == "R-HSA-176187" ~"Cell Cycle",
-#                                   stId == "R-HSA-141444" ~"Cell Cycle",
-#                                   stId == "R-HSA-141424" ~"Cell Cycle")) 
-
-# gene_pathways_module9 <- map2(module9_reactome_web$pathway_identifier, module9_reactome_web$submitted_entities_found, parse_entities) %>%
-#   bind_rows() %>%
-#   distinct()  %>%
-#   left_join(pathways_super, by = "stId") %>%
-#   filter(str_detect(stId, "-HSA-")) %>%
-#   mutate(superpathway = case_when(is.na(superpathway) ~"not_annotated",
-#                                   TRUE ~superpathway))
-# # 
-# df <- gene_pathways_module9 %>%
-#   mutate(name = make.names(name)) %>%
-#   select(-stId) %>%
-#   distinct() %>%
-#   pivot_wider(names_from = name, values_from = superpathway, values_fill = "notMember")
-# res <- write_csv(df, "../tables/MDD_integrated_reactome_module9_genes_pathways.csv")
-
-#heatmap (0 = white, 1 = red) for the attached module 9 gene list clustering both the rows and columns
-
-# gene_pathways <- read_xlsx("../integrated_analysis/Data/REACTOME_SUPERPATHWAYS_MODULE9.xlsx")
-# 
-# gene_pathways_dm <- gene_pathways %>%
-#   select(-gene) %>%
-#   as.matrix()
-# rownames(gene_pathways_dm) <- gene_pathways$gene
-# gp_hm <- Heatmap(gene_pathways_dm,
-#                   name = "Member",
-#                   row_names_gp = gpar(fontsize = 4),
-#                   column_names_gp = gpar(fontsize = 10),
-#                   col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-#   pdf("../plots/MDD_reactome_gene_pathways.pdf",
-#       width = 5,
-#       height =20,
-#       useDingbats = FALSE,)
-#   draw(gp_hm)
-#   dev_off_res <- dev.off()
 
 ```
 
 ```{r module10_pathways_vs_superpathways}
 
-#Start with module 9 pathways from Reactome
+#Start with module 10 pathways from Reactome
 #Filter to significant pathways
-#Associate pathwayd with superpathway
-#plot superpathwya vs pathway, color by FDR, size by geneRatio
+#Associate pathway with superpathway
 FDR_thresh_mod10 <- .2
 gene_ratio_thresh_mod10 <- .2
 
-
+###todo manually add superpathways where great_great_grandparent_names are not
 pathways_10_selected <- pathways_10 %>%
   filter(fdr <= FDR_thresh_mod10,
          geneRatio >= gene_ratio_thresh_mod10) %>%
-  group_by(grandparent_name) %>%
-  slice_min(order_by = c(fdr, geneRatio), n = 5, with_ties = FALSE) %>%
+  mutate(superpathway = case_when(stId == "R-HSA-69190" ~"DNA Replication",
+                                  stId == "R-HSA-68962" ~"DNA Replication",
+                                  stId == "R-HSA-69205" ~"Cell Cycle",
+                                  stId == "R-HSA-176974" ~"DNA Replication",
+                                  stId == "R-HSA-69206" ~"Cell Cycle",
+                                  stId == "R-HSA-69278"  ~"Cell Cycle",
+                                  stId == "R-HSA-1538133" ~"Cell Cycle",
+                                  stId == "R-HSA-453279" ~"Cell Cycle",
+                                  stId == "R-HSA-176187" ~"Cell Cycle",
+                                  stId == "R-HSA-141444" ~"Cell Cycle",
+                                  stId == "R-HSA-141424" ~"Cell Cycle",
+                                  TRUE ~ great_great_grandparent_name)) %>%
+  group_by(superpathway) %>%
+  slice_min(order_by = c(fdr, geneRatio), n = 1, with_ties = FALSE) %>%
   ungroup() %>%
   mutate(name = fct_inorder(str_trunc(name, 40)))
 
-p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = name, fill = grandparent_name)) +
+p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = superpathway, fill = great_great_grandparent_name)) +
   geom_col() +
   theme_bw() +
   guides(fill = "none")+
@@ -329,7 +277,9 @@ pdf("../multiomics_analysis/plots/MDD_F6d.pdf",
       useDingbats = FALSE,)
   print(p)
   dev_off_res <- dev.off()
-  
+
+#plot superpathway vs pathway, color by FDR, size by geneRatio
+ 
 p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = name,  size = found, color = fdr)) +
   geom_point() +
   scale_color_gradient(low = "red", high = "blue") +
