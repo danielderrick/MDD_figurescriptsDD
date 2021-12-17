@@ -476,7 +476,7 @@ res <- multiomics_14_data_ann %>%
 ```{r correlate_to_phenotypes}
 
 #start with level 3 IF data from synapse
-if_df <- read_csv("../Immunofluorescence/Data/MDD_IF_Level3.csv",skip = 1) %>%
+if_df <- read_csv("../IF/Data/MDD_IF_Level3.csv",skip = 1) %>%
   rename("feature" = "specimenName") %>%
   filter(str_detect(feature, "_")) %>%
   select(matches("feature|24_C2|48_C2")) %>%
@@ -492,7 +492,7 @@ if_df <- read_csv("../Immunofluorescence/Data/MDD_IF_Level3.csv",skip = 1) %>%
   pivot_wider(names_from = condition, values_from = value) %>%
   select(feature, all_of(condition_order))
 
-if_df_migration <- read_csv("../Immunofluorescence/Data//MDD_migration_distance_lineage_T0.csv") %>%
+if_df_migration <- read_csv("../IF/Data//MDD_migration_distance_lineage_T0.csv") %>%
   filter(thour %in%c(24, 48),
          !treatment == "PBS") %>%
   mutate(condition = paste0(treatment,"_",thour),
@@ -519,6 +519,9 @@ df <- module_phenotype_data_ann %>%
   filter(module == "10",
          feature == "Edu_Positive_Proportion")
 
+mod10_edu_anova <- lm(formula = phenotype_value ~module_value, data = df) %>%
+  anova()
+
 p_mod10_edu <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
   geom_point(aes(color = ligand, size = time)) +
@@ -538,6 +541,9 @@ p_mod10_edu
 df <- module_phenotype_data_ann %>%
   filter(module == "9+18",
          feature == "Mean_Cells_per_Cluster")
+
+mod9_18_mcc_anova <- lm(formula = phenotype_value ~module_value, data = df) %>%
+  anova()
 
 p_mod9_18_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
@@ -559,6 +565,9 @@ df <- module_phenotype_data_ann %>%
   filter(module == "7",
          feature == "Mean_Cells_per_Cluster")
 
+mod7_mcc_anova <- lm(formula = phenotype_value ~module_value, data = df) %>%
+  anova()
+
 p_mod7_mcc <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
   geom_point(aes(color = ligand, size = time)) +
@@ -579,6 +588,9 @@ df <- module_phenotype_data_ann %>%
   filter(module == "2+8",
          feature == "Normalized_Second_Neighbor_Dist")
 
+mod2_8_nsnd_anova <- lm(formula = phenotype_value ~module_value, data = df) %>%
+  anova()
+
 p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
   stat_smooth(se = FALSE, method = "lm", formula = 'y ~x') +
   geom_point(aes(color = ligand, size = time)) +
@@ -596,16 +608,16 @@ p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
 p_mod2_8_nsnd
 
 if(create_pdfs) {
-  pdf("../multiomics_analysis/plots/MDD_F5d.pdf", useDingbats = TRUE)
+  pdf("../multiomics_analysis/plots/MDD_F5d.pdf", useDingbats = FALSE)
   res <- print(p_mod10_edu)
   res <- dev.off()
-  pdf("../multiomics_analysis/plots/MDD_F5e.pdf", useDingbats = TRUE)
+  pdf("../multiomics_analysis/plots/MDD_F5e.pdf", useDingbats = FALSE)
   res <- print(p_mod9_18_mcc)
   res <- dev.off() 
-  pdf("../multiomics_analysis/plots/MDD_F5f.pdf", useDingbats = TRUE)
+  pdf("../multiomics_analysis/plots/MDD_F5f.pdf", useDingbats = FALSE)
   res <- print(p_mod7_mcc)
   res <- dev.off() 
-  pdf("../multiomics_analysis/plots/MDD_F5g.pdf", useDingbats = TRUE)
+  pdf("../multiomics_analysis/plots/MDD_F5g.pdf", useDingbats = FALSE)
   res <- print(p_mod2_8_nsnd)
   res <- dev.off()
 }
