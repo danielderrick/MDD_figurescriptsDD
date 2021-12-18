@@ -10,6 +10,7 @@ suppressMessages(library(tidyverse))
 suppressMessages(library(ComplexHeatmap))
 suppressMessages(library(circlize))
 library(umap)
+ht_opt$message = FALSE
 ```
 
 
@@ -25,9 +26,9 @@ load_data <- function(assay_name, level = 4){
   if(!length(file_name) == 1) stop("There was not one ", assay_name, " data file found")
     
   if(str_detect(file_name, "csv")) {
-    df <- read_csv(file_name)
+    df <- read_csv(file_name, show_col_types = FALSE)
   } else if (str_detect(file_name, "tsv")){
-    df <- read_tsv(file_name)
+    df <- read_tsv(file_name, show_col_types = FALSE)
   } else stop("The data file ",file_name, " must be a csv or tsv file type")
 } #end of function
 
@@ -52,7 +53,7 @@ prep_data <- function(df, md){
   
   #Arrange columns by standard condition order
   df <- df %>%
-    select(feature, condition_order)
+    select(feature, all_of(condition_order))
   return(df)
 }
 
@@ -323,7 +324,7 @@ ligand_EGF_cols <- c("CTRL" = "#7A4A2A",
                       "IFNG+EGF" = "#ff0000",
                       "TGFB+EGF" = "#ff0000")
 
-md <- read_csv("../metadata/MDD_sample_annotations.csv") %>%
+md <- read_csv("../metadata/MDD_sample_annotations.csv", show_col_types = FALSE) %>%
   mutate(specimenName = str_replace(specimenName, "ctrl", "CTRL"),
          experimentalCondition = str_replace(experimentalCondition, "ctrl", "CTRL"),
          ligand= str_replace(ligand, "ctrl", "CTRL"))
@@ -357,7 +358,7 @@ plot_heatmap(RPPA,
 
 #### Line graphs
 
-```{r, fig.height=15, fig.width=15}
+```{r, fig.height=20, fig.width=15}
 
 plot_line_graphs <- function(df, md, ligand_cols, fc_thresh = 1, assay_name){
   
@@ -379,7 +380,7 @@ plot_line_graphs <- function(df, md, ligand_cols, fc_thresh = 1, assay_name){
             Ligand = str_replace(Ligand, "TGFB", "TGFB+EGF"),
             Ligand = factor(Ligand, levels = names(ligand_cols))) %>%
     group_by(feature, Collection, Time, Ligand) %>%
-    summarise(value = median(value)) %>%
+    summarise(value = median(value), .groups = 'drop') %>%
     ungroup() 
   
   fc_set <- df_med %>%
@@ -402,10 +403,10 @@ plot_line_graphs <- function(df, md, ligand_cols, fc_thresh = 1, assay_name){
     theme(axis.text.x = element_text(angle=90),
           axis.text.y=element_blank(),
           axis.ticks.y=element_blank(),
-          strip.text = element_text(size=10, hjust=0),
+          strip.text = element_text(size=8, hjust=0),
             panel.background = element_rect(fill = NA),
   panel.grid.major = element_line(colour = "gray95"))+
-    facet_wrap(~feature, scales = "free_y")
+    facet_wrap(~str_wrap(feature, 9), scales = "free_y")
   p
   
 }
@@ -469,7 +470,7 @@ The heatmap shows the pearson correlation values of the top `r 100-var_thresh_pe
 boundedLog2 <- function(x) log2(x + .0001)
 
 immunofluoresence <- load_data(assay_name = "IF", level = 3) %>%
-  rename(feature = "X1") %>%
+  rename(feature = "...1") %>%
   mutate(feature = as.character(feature)) %>%
   filter(!feature %in% c("specimenName", "experimentalTimePoint", "collection", "ligand", "replicate")) %>%
   mutate_at(vars(-feature), .funs = as.numeric) %>%
@@ -527,7 +528,7 @@ cycIF <-  load_data(assay_name = "cycIF", level = 3) %>%
   mutate(MedCenter = value-median(value, na.rm = TRUE),
          ZScore = MedCenter/sd(value, na.rm = TRUE)) %>%
   ungroup() %>%
-    left_join(md) %>%
+    left_join(md, by = "specimenName") %>%
   dplyr::select(feature, specimenID, ZScore) %>%
   spread(key = specimenID, value = ZScore)
 
