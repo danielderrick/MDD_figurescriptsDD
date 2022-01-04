@@ -17,8 +17,8 @@ library(clue)
 #library(UpSetR)
 
 source("../R/MDD_functions.R")
-create_pdfs <- TRUE
-write_csvs <- TRUE
+create_pdfs <- FALSE
+write_csvs <- FALSE
 
 ```
 
@@ -606,6 +606,9 @@ p_mod2_8_nsnd <- ggplot(df, aes(x = module_value, y = phenotype_value)) +
         panel.grid.minor = element_blank(),
         strip.text.x = element_text(size = 3.5))
 p_mod2_8_nsnd
+
+#generate q values of the phenotype to module fits
+qvalues <- p.adjust(c(mod10_edu_anova$`Pr(>F)`[1], mod9_18_mcc_anova$`Pr(>F)`[1], mod7_mcc_anova$`Pr(>F)`[1],  mod2_8_nsnd_anova$`Pr(>F)`[1]), method = "holm")
 
 if(create_pdfs) {
   pdf("../multiomics_analysis/plots/MDD_F5d.pdf", useDingbats = FALSE)
