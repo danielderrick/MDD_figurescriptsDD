@@ -14,7 +14,7 @@ library(ComplexHeatmap)
 library(circlize)
 
 
-create_pdfs <- FALSE
+create_pdfs <- TRUE
 write_csvs <- FALSE
 
 #dotplot filter values 
@@ -247,8 +247,20 @@ gene_ratio_thresh_mod10 <- .2
 pathways_10_selected <- pathways_10 %>%
   filter(fdr <= FDR_thresh_mod10,
          geneRatio >= gene_ratio_thresh_mod10) %>%
-  mutate(superpathway = case_when(stId == "R-HSA-69190" ~"DNA Replication",
-                                  stId == "R-HSA-68962" ~"DNA Replication",
+  mutate(superpathway = case_when(stId == "R-HSA-69306" ~"DNA Replication",
+                                  stId == "R-HSA-1640170" ~"Cell Cycle",
+                                  stId == "R-HSA-69186" ~"Cell Cycle",
+                                  stId == "R-HSA-69109" ~"Cell Cycle",
+                                  stId == "R-HSA-176417" ~"Cell Cycle",
+                                  stId == "R-HSA-113501" ~"Cell Cycle",
+                                  stId == "R-HSA-113507" ~"Cell Cycle",
+                                  stId == "R-HSA-69200" ~"Cell Cycle",
+                                  stId == "R-HSA-174411" ~"Cell Cycle",
+                                  stId == "R-HSA-69091" ~"Cell Cycle",
+                                  stId == "R-HSA-69183" ~"Cell Cycle",
+                                  stId == "R-HSA-69190" ~"DNA Replication",
+                                  stId == "R-HSA-69166" ~"Cell Cycle",
+                                  stId == "R-HSA-68962" ~"Cell Cycle",
                                   stId == "R-HSA-69205" ~"Cell Cycle",
                                   stId == "R-HSA-176974" ~"DNA Replication",
                                   stId == "R-HSA-69206" ~"Cell Cycle",
@@ -258,16 +270,26 @@ pathways_10_selected <- pathways_10 %>%
                                   stId == "R-HSA-176187" ~"Cell Cycle",
                                   stId == "R-HSA-141444" ~"Cell Cycle",
                                   stId == "R-HSA-141424" ~"Cell Cycle",
-                                  TRUE ~ great_great_grandparent_name)) %>%
+                                  stId == "R-HSA-5693616" ~"DNA Repair",
+                                  stId == "R-HSA-5693568" ~"DNA Repair",
+                                  stId == "R-HSA-5693554" ~"DNA Repair",
+                                  stId == "R-HSA-190872" ~"Vesicle-mediated transport",
+                                  stId == "R-HSA-6804114" ~"Gene expression (Transcription)",
+                                  stId == "R-HSA-6804116" ~"Gene expression (Transcription)",
+                                  str_detect(name, "Disease") ~"Disease",
+                                  TRUE ~ str_remove_all(great_great_grandparent_name, ", Mitotic| external|Double-Strand Break "))) %>%
   group_by(superpathway) %>%
   slice_min(order_by = c(fdr, geneRatio), n = 1, with_ties = FALSE) %>%
   ungroup() %>%
-  mutate(name = fct_inorder(str_trunc(name, 40)))
+  arrange(desc(fdr)) %>%
+  mutate(superpathway = fct_inorder(str_trunc(superpathway, 40))) %>%
+  drop_na()
 
-p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = superpathway, fill = great_great_grandparent_name)) +
+p <- ggplot(pathways_10_selected, aes(x = -log10(fdr), y = superpathway)) +
   geom_col() +
   theme_bw() +
-  guides(fill = "none")+
+  xlab("Log10(FDR)") +
+  ylab("")+
   theme(axis.text.x = element_text(size = 20, angle = 90))
 p
 
@@ -279,8 +301,50 @@ pdf("../multiomics_analysis/plots/MDD_F6d.pdf",
   dev_off_res <- dev.off()
 
 #plot superpathway vs pathway, color by FDR, size by geneRatio
+ df <- pathways_10 %>%
+  filter(fdr <= FDR_thresh_mod10,
+         geneRatio >= gene_ratio_thresh_mod10) %>%
+  mutate(superpathway = case_when(stId == "R-HSA-69306" ~"DNA Replication",
+                                  stId == "R-HSA-1640170" ~"Cell Cycle",
+                                  stId == "R-HSA-69186" ~"Cell Cycle",
+                                  stId == "R-HSA-69109" ~"Cell Cycle",
+                                  stId == "R-HSA-176417" ~"Cell Cycle",
+                                  stId == "R-HSA-113501" ~"Cell Cycle",
+                                  stId == "R-HSA-113507" ~"Cell Cycle",
+                                  stId == "R-HSA-69200" ~"Cell Cycle",
+                                  stId == "R-HSA-174411" ~"Cell Cycle",
+                                  stId == "R-HSA-69091" ~"Cell Cycle",
+                                  stId == "R-HSA-69183" ~"Cell Cycle",
+                                  stId == "R-HSA-69190" ~"DNA Replication",
+                                  stId == "R-HSA-69166" ~"Cell Cycle",
+                                  stId == "R-HSA-68962" ~"Cell Cycle",
+                                  stId == "R-HSA-69205" ~"Cell Cycle",
+                                  stId == "R-HSA-176974" ~"DNA Replication",
+                                  stId == "R-HSA-69206" ~"Cell Cycle",
+                                  stId == "R-HSA-69278"  ~"Cell Cycle",
+                                  stId == "R-HSA-1538133" ~"Cell Cycle",
+                                  stId == "R-HSA-453279" ~"Cell Cycle",
+                                  stId == "R-HSA-176187" ~"Cell Cycle",
+                                  stId == "R-HSA-141444" ~"Cell Cycle",
+                                  stId == "R-HSA-141424" ~"Cell Cycle",
+                                  stId == "R-HSA-5693616" ~"DNA Repair",
+                                  stId == "R-HSA-5693568" ~"DNA Repair",
+                                  stId == "R-HSA-5693554" ~"DNA Repair",
+                                  stId == "R-HSA-190872" ~"Vesicle-mediated transport",
+                                  stId == "R-HSA-6804114" ~"Gene expression (Transcription)",
+                                  stId == "R-HSA-6804116" ~"Gene expression (Transcription)",
+                                  str_detect(name, "Disease") ~"Disease",
+                                  TRUE ~ str_remove_all(great_great_grandparent_name, ", Mitotic| external|Double-Strand Break "))) %>%
+  group_by(superpathway) %>%
+  slice_min(order_by = c(fdr, geneRatio), n = 5, with_ties = FALSE) %>%
+  ungroup() %>%
+   filter(superpathway %in% c("Cell Cycle", "DNA Replication", "Signal Transduction", "DNA Repair")) %>%
+   arrange(superpathway, desc(geneRatio)) %>%
+  mutate(name = str_wrap(name, 40),
+          name = fct_drop(name),
+         name = fct_inorder(name))
  
-p <- ggplot(pathways_10_selected, aes(x = geneRatio, y = name,  size = found, color = fdr)) +
+p <- ggplot(df, aes(x = geneRatio, y = name,  size = found, color = fdr)) +
   geom_point() +
   scale_color_gradient(low = "red", high = "blue") +
   labs(title = "Module 10 Reactome Pathway Enrichment",
