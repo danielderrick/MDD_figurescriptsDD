@@ -11,7 +11,7 @@ PBS_pointer <- "_noPBS2"
 if(keep_PBS) PBS_pointer <- ""
 
 #Read in consensus clustering data
-combined14_features_data_ann <- read_csv("../multiomics_analysis/tables/MDD_multiomics_14.csv") 
+combined14_features_data_ann <- read_csv("../Data/MDD_multiomics_14.csv") 
 
 c14_consensus_dm <- combined14_features_data_ann %>%
   select(matches("_[0-9][0-9]")) %>%
@@ -258,7 +258,7 @@ random_combined18 <- map(list(RNAseq_dm, RPPA_dm, GCP_dm, cycIF_dm, ATACseq_dm),
 #                       col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
 # rnd_cor_hm
 
-pdf(paste0("MCF10A_MDD_MoCluster_heatmaps_sparsity_",cPCA_sparsity,".pdf"), width = 5,height = 5)
+pdf(paste0("../plots/MCF10A_MDD_MoCluster_heatmaps_sparsity_",cPCA_sparsity,".pdf"), width = 5,height = 5)
 print(p_eigen)
 print(Heatmap(t(scr), 
               name = "CPCA Score",
