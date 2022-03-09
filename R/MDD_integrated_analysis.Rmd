@@ -162,13 +162,13 @@ if(file.exists(paste0(data_path,"MDD_multiomics_clusters.csv"))){
   # The most popular criterion functions are of the form L(x) = ∑ w_b d(x_b, x)^p, where d is a suitable dissimilarity measure (see cl_dissimilarity), w_b is the case weight given to element x_b of the ensemble, and p ≥ 1. If p = 1 and minimization is over all possible base clusterings, a consensus solution is called a median of the ensemble; if minimization is restricted to the elements of the ensemble, a consensus solution is called a medoid (see cl_medoid). For p = 2, we obtain least squares consensus partitions and hierarchies (generalized means). See also Gordon (1999) for more information.
   # 
   # If all elements of the ensemble are partitions, the built-in consensus methods compute consensus partitions by minimizing a criterion of the form L(x) = ∑ w_b d(x_b, x)^p over all hard or soft partitions x with a given (maximal) number k of classes. Available built-in methods are as follows.
-  nbr_clusterings <- 100
-  nbr_consensus <- 3
-  nbr_runs <- 25
+  nr_clusterings <- 100
+  nr_consensus <- 3
+  nr_runs <- 25
 
   set.seed(42)
-  res <- lapply(1:nbr_runs, function(x, nbr_clusterings = nbr_clusterings, nbr_consensus = nbr_consensus){
-    cons <- create_consensus_clustering(nbr_clusterings = nbr_clusterings, nbr_consensus= nbr_consensus) 
+  res <- lapply(1:nbr_runs, function(x, nbr_clusterings = nr_clusterings, nbr_consensus = nr_consensus){
+    cons <- create_consensus_clustering(nbr_clusterings = nr_clusterings, nbr_consensus= nr_consensus) 
     save(cons, file =paste0("../Data/MDD_multiomics_clstrng_run_",x,".rda"))
   })
   con_cons <- clue::cl_ensemble(list = lapply(1:25, function(x){
@@ -322,7 +322,6 @@ rownames(multiomics_14_data_mean_dm) <-multiomics_14_data_mean$Cluster
 #Annotate callouts with abbreviations of the type 
 
 df <- multiomics_14_data_ann %>%
-  #filter(!Type == "RNAseq") %>%
   mutate(feature = str_remove(feature, "_[[:digit:]]_.*[nuc|cytoplasm]"),
          feature = case_when(Type == "RPPA" ~paste(feature, "(R)"),
                              Type == "cycIF" ~paste(feature, "(C)"),
