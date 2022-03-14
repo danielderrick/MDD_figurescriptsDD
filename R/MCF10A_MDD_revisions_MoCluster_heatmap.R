@@ -137,36 +137,6 @@ combined18_features_data_mean_dm <- combined18_features_data_mean %>%
   as.matrix()
 rownames(combined18_features_data_mean_dm) <- paste0("Module_",combined18_features_data_mean$Cluster)
 
-#combined14_clusters <-c("1", "2", "3+4", "5", "6+16", "7", "8+17", "9", "10+15", "11", "12", "13", "14","18")
-
-#cluster14_cols <- c(structure(RColorBrewer::brewer.pal(12, "Paired")[1:12], names = combined14_clusters[1:12]), c("14" = "#222222", "18" = "#555555"))
-
-#combined14_features_data_ann <- combined18_features_data_ann %>%
-  # mutate(Cluster = as.character(Cluster),
-  #        Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
-  #                            Cluster %in% c("6","16") ~"6+16",
-  #                            Cluster %in% c("8", "17") ~"8+17",
-  #                            Cluster %in% c("10","15") ~"10+15",
-  #                            TRUE ~Cluster),
-  #        Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
-  # as.data.frame()
-
-#Remove the cluster assignments to keep the code similar to the 
-#other dataset processing
-#combined14_features_data <- combined14_features_data_ann %>%
-# select(-Cluster)
-
-#create a numeric matrix with feature row names
-# combined14_features_dm <- combined14_features_data %>%
-#   select(all_of(condition_order)) %>%
-#   as.matrix() 
-# rownames(combined14_features_dm) <- combined14_features_data$feature_type
-# combined14_features_dm <- combined14_features_dm[!is.nan(combined14_features_dm[,1]),]
-# 
-# combined14_features_ann <- combined14_features_data_ann %>%
-#   select(Cluster, Type, Set) %>%
-#   as.data.frame()
-
 combined14_features_data_mean <- combined14_features_data_ann %>%
   group_by(Cluster) %>%
   summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
@@ -176,19 +146,25 @@ combined14_features_data_mean_dm <- combined14_features_data_mean %>%
 as.matrix()
 rownames(combined14_features_data_mean_dm) <- paste0("Module_",combined14_features_data_mean$Cluster)
 
+#create a heatmap with treatments on the x axis and module means on the y
+
+hm_means_treatments <- Heatmap(combined14_features_data_mean_dm,
+                  column_title = paste("MCF10A MDD module means"),
+                  name = "rrscale vale\n(mean)",
+                  row_names_gp = gpar(fontsize = 10),
+                  cluster_rows = FALSE,
+                  cluster_columns = FALSE,
+                  #split = clusters,
+                  column_names_gp = gpar(fontsize = 8),
+                  col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")),
+                  column_title_gp = gpar(fontsize = 8))
+hm_means_treatments
 #separate the assays for MoCluster analysis
 RNAseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "RNAseq"),]
 RPPA_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "RPPA"),]
 GCP_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "GCP"),]
 cycIF_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "cycIF"),]
 ATACseq_dm <- combined18_features_dm[str_detect(rownames(combined18_features_dm), "motifs"),]
-
-rnd_dm <- function(dm){
-  dm_r <- dm[sample(1:nrow(dm)),sample(1:ncol(dm))]
-  df_r <- as_tibble(dm_r, rownames = "feature_type")
-  return(df_r)
-}
-
 
 max_JLV_nbr <- 20
 cPCA_sparsity <- .9
@@ -222,42 +198,6 @@ cor_hm <- Heatmap(cor_mdd_cPCA,
                   column_title_gp = gpar(fontsize = 8))
 cor_hm
 
-#find correlations between the MoCluster PCs and a random version of the mdd clusters
-
-random_combined18 <- map(list(RNAseq_dm, RPPA_dm, GCP_dm, cycIF_dm, ATACseq_dm), rnd_dm) %>%
-  bind_rows() %>%
-  left_join(tibble(feature_type = names(clusters), Cluster = clusters), by = "feature_type")
-
-# random_combined14 <- random_combined18 %>%
-#   mutate(Cluster = as.character(Cluster),
-#          Cluster = case_when(Cluster %in% c("3","4") ~"3+4",
-#                              Cluster %in% c("6","16") ~"6+16",
-#                              Cluster %in% c("8", "17") ~"8+17",
-#                              Cluster %in% c("10","15") ~"10+15",
-#                              TRUE ~Cluster),
-#          Cluster = factor(Cluster, levels = combined14_clusters, ordered = TRUE)) %>%
-#   as.data.frame()
-# random_combined14_mean <-  random_combined14 %>%
-#   group_by(Cluster) %>%
-#   summarise(across(.cols = matches("_24|48"), .fns = mean, .groups = "drop"))
-# 
-# random_combined14_mean_dm <- random_combined14_mean %>%
-#   select(-Cluster)  %>%
-#   as.matrix()
-# rownames(random_combined14_mean_dm) <- paste0("Module_",random_combined14_mean$Cluster)
-# random_c14_cPCA <- cor(t(random_combined14_mean_dm), scr, method = "pearson")
-# 
-# rnd_cor_hm <- Heatmap(random_c14_cPCA,
-#                       column_title = "Correlation of MultiOmic CPCA\n to MDD modules of randomized data",
-#                       name = "pearson\ncorrelation",
-#                       row_names_gp = gpar(fontsize = 10),
-#                       cluster_rows = FALSE,
-#                       cluster_columns = FALSE,
-#                       #split = clusters,
-#                       column_names_gp = gpar(fontsize = 8),
-#                       col = colorRamp2(c(-1, 0, 1), c("#2166AC", "white", "#B2182B")))
-# rnd_cor_hm
-
 pdf(paste0("../plots/MCF10A_MDD_MoCluster_heatmaps_sparsity_",cPCA_sparsity,".pdf"), width = 5,height = 5)
 print(p_eigen)
 print(Heatmap(t(scr), 
@@ -267,7 +207,7 @@ print(Heatmap(t(scr),
               cluster_columns = FALSE,
               column_names_gp = gpar(fontsize = 6)))
 print(cor_hm)
-#print(rnd_cor_hm)
+print(hm_means_treatments)
 res <- dev.off()
 
 #Use PC2 loadings to compare 
