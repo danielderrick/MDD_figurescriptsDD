@@ -14,7 +14,7 @@ library(ComplexHeatmap)
 library(circlize)
 
 
-create_pdfs <- TRUE
+create_pdfs <- FALSE
 write_csvs <- FALSE
 
 #dotplot filter values 
@@ -143,6 +143,8 @@ dotplot_pathways <- make_dotplots_API(pathways,
                          max_pathway_genes = max_pathway_genes,
                          pathway_nbr = pathway_nbr,
                          axis.text.x.angle = 90)
+
+res <- write_csv(dotplot_pathways,"../multiomics_analysis/tables/MDD_F5b_table.csv")
 
 ```
 
