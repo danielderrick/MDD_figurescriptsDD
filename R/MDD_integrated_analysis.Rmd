@@ -238,6 +238,15 @@ multiomics_data_mean_dm <- multiomics_data_mean %>%
   as.matrix()
 rownames(multiomics_data_mean_dm) <- paste0("Module_",multiomics_data_mean$Cluster,"_", multiomics_count$n)
 
+
+multiomics_data_sem <- multiomics_data_ann %>%
+  group_by(Cluster) %>%
+  add_count() %>%
+  summarise(across(.cols = matches("_24|48|n"), list(mean, sd))) %>%
+  mutate(across(.cols = matches("_2$"), ~ ./sqrt(n_1))) %>%
+  select(matches("Cluster|_2$"), -n_2) %>%
+  rename_with(~gsub("_2","", .x))
+
 ```
 
 ```{r correlate_modules}
@@ -310,6 +319,14 @@ multiomics_14_data_mean_dm <- multiomics_14_data_mean %>%
   select(-Cluster) %>%
   as.matrix()
 rownames(multiomics_14_data_mean_dm) <-multiomics_14_data_mean$Cluster
+
+multiomics_14_data_sem <- multiomics_14_data_ann %>%
+  group_by(Cluster) %>%
+  add_count() %>%
+  summarise(across(.cols = matches("_24|48|n"), list(mean, sd))) %>%
+  mutate(across(.cols = matches("_2$"), ~ ./sqrt(n_1))) %>%
+  select(matches("Cluster|_2$"), -n_2) %>%
+  rename_with(~gsub("_2$","", .x))
 
 ```
 
@@ -801,15 +818,26 @@ if(create_pdfs){
 } 
 
 #Module 2 only
-df <- multiomics_14_data_mean %>%
+df_mean <- multiomics_14_data_mean %>%
   pivot_longer(cols = contains("_")) %>%
   filter(Cluster == 4) %>%
   mutate(ligand = str_remove(name, "_.*")) %>%
   group_by(Cluster, ligand) %>%
   summarise(mean = mean(value), .groups = "drop")
 
+df_sem <- multiomics_14_data_sem %>%
+  pivot_longer(cols = contains("_")) %>%
+  filter(Cluster == 4) %>%
+  mutate(ligand = str_remove(name, "_.*")) %>%
+  group_by(Cluster, ligand) %>%
+  summarise(sem = mean(value), .groups = "drop")
+
+df <- df_mean %>%
+  left_join(df_sem)
+
 cl4_mean <- ggplot(df, aes(x = ligand, y =mean, fill = ligand))+
   geom_col() +
+  geom_errorbar(aes(ymin=mean-sem, ymax = mean+sem)) +
   theme_bw() +
   labs(x = "",
        y = "Mean Module 4 Expression") +
