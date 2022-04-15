@@ -848,7 +848,7 @@ Make heatmaps of the log2(TPM) values with both row and column mean-centering
 
 ```{r GTEx_heatmap}
 
-multiomics_14_GTEx <- read_delim("~/Documents/MCF10A MDD/MDD/multiomics_analysis/data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct", 
+multiomics_14_GTEx <- read_delim("../multiomics_analysis/data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct", 
     delim = "\t", escape_double = FALSE, 
     trim_ws = TRUE, skip = 2) %>% 
   inner_join(multiomics_14_data_ann, by = c("Description" = "feature")) %>%
@@ -885,5 +885,9 @@ if(create_pdfs){
   print(hm_GTEx)
   res <- dev.off()
 } 
+
+if(write_csvs){
+  write_csv( multiomics_14_GTEx_mean, file = "../multiomics_analysis/tables/Sup Table 10 GTEx_heatmap.csv")
+}
 
 ```
