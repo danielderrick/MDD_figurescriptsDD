@@ -16,6 +16,9 @@ L1000File           <- "../L1000/Data/MDD_L1000_Level3.csv"
 L1000AnnoFile       <- "../L1000/Metadata/MDD_L1000_probeAnnotations.csv"
 L1000SampleAnnoFile <- "../L1000/Metadata/MDD_L1000_sampleMetadata.csv"
 
+colFile            <- "../misc/MDD_color_codes.csv"
+
+###############################################################################
 # Setup
 ## Importing data
 
@@ -29,7 +32,26 @@ L1000Anno        <- read.csv(L1000AnnoFile)
 L1000SampleAnno  <- read.csv(L1000SampleAnnoFile)
 
 ## Importing colors
-source(colScript)
+
+col_MDD <- read.csv(colFile)
+col_MDD <- list(
+  Ligand = dplyr::slice(col_MDD, 1:8),
+  Time = dplyr::slice(col_MDD, 10:15),
+  # secondLigand = dplyr::slice(col_MDD, 17:18),
+  # replicate = dplyr::slice(col_MDD, 19:24),
+  collection = dplyr::slice(col_MDD, 26:28)
+)
+
+col_MDD <-
+  lapply(col_MDD, function(x) {
+    x <- setNames(as.character(x[, 2]), x[, 1])
+  })
+
+names(col_MDD$Ligand)[1] <- "CTRL"
+names(col_MDD$Ligand)[6:8] <- sprintf("%s+EGF", names(col_MDD$Ligand)[6:8])
+
+order <- c("CTRL", "PBS", "HGF", "OSM", "EGF", "BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
+col_MDD$Ligand <- col_MDD$Ligand[order]
 
 ## Converting data to HGNC symbols
 
@@ -92,11 +114,11 @@ RNAseq_symbol_Z <-
 
 filt <- apply(RNAseq_symbol_Z, 1, anyNA)
 
+# Removing NAs
 RNAseq_symbol_Z_filt <- RNAseq_symbol_Z[!filt, ]
 L1000_symbol_Z_filt  <- L1000_symbol_Z[!filt, ]
 
 ## Computing pearson's correlation between samples
-
 corZ <- 
   cor((L1000_symbol_Z_filt),
       (RNAseq_symbol_Z_filt), 
@@ -144,7 +166,6 @@ if (!dir.exists(outDirPlots)) {dir.create(outDirPlots)}
 ## Matched conditions
 
 
-```{r, echo = FALSE, message = FALSE}
 corMatchedTrt <- 
   corZ %>% 
   data.frame() %>% 

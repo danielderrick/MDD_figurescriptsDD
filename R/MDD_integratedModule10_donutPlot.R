@@ -8,13 +8,13 @@ library(RColorBrewer)
 library(ggpubr)
 
 importRNAscript <- "MDD_import_RNAseq_ensembl.R"
-geneListFile    <- "../misc/MDD_multiomics14Modules_TFannotations_module10.csv"
+geneListFile    <- "../misc/MDD_multiomics14Modules_TFannotations_module10_2.csv"
 outDirPlots     <- "../plots/MDD_manuscript_figures/"
 
 ###############################################################################
 
 if(!grepl("R$", getwd())) {setwd("R")}
-source(importRNAscript)
+# source(importRNAscript)
 
 ###############################################################################
 

@@ -84,8 +84,9 @@ myListForEuler <- list(
 euler(myListForEuler) %>% 
   plot(quantities = TRUE)
 
-# annotating modules..
-allTFs <- unique(c(myListForEuler$JASPAR, myListForEuler$GO))
+# Manually add in TCF19 (Transcription Factor 19), a TF that 
+# is missing from these lists
+allTFs <- c(unique(c(myListForEuler$JASPAR, myListForEuler$GO)), "TCF19")
 
 modules <- 
   modules %>% 

@@ -12,6 +12,10 @@ motifFile   <- "../ATACseq/Data/motif/MDD_ATACseq_MotifFamilyScores.csv"
 outDir      <- "../plots/MDD_manuscript_figures"
 families    <- c("STAT factors", "Interferon-regulatory factors")
 
+###############################################################################
+
+if(!grepl("R$", getwd())) {setwd("R")}
+
 col <- read.csv(colFile, stringsAsFactors = FALSE)
 col <- list(
   ligand = dplyr::slice(col, 1:8),
@@ -55,8 +59,7 @@ joinAndFilterFeatures <- function(data, annoTable, featureName, myFilter) {
   x
 }
 
-joinBindGroupAndSummarize <- function(data, sampleAnno, ligands, featureName, bind_with1, bind_with2) {
-  # quo_featureName <- enquo(featureName)
+joinBindGroupNoSummary <- function(data, sampleAnno, ligands, featureName, bind_with1, bind_with2) {
   x <-
     data %>% 
     left_join(sampleAnno) %>% 
@@ -65,10 +68,29 @@ joinBindGroupAndSummarize <- function(data, sampleAnno, ligands, featureName, bi
     dplyr::select(-contains("specimen")) %>% 
     bind_rows(bind_with1) %>% 
     bind_rows(bind_with2) %>% 
-    # group_by(experimentalCondition, !!quo_featureName, ligand, experimentalTimePoint) %>% 
     group_by(experimentalCondition, family, ligand, experimentalTimePoint) %>%
     arrange(experimentalTimePoint) %>%
-    summarize(meanExpr = median(expression),
+    data.frame() %>%
+    arrange(experimentalTimePoint) %>%
+    mutate(clear = case_when(ligand == "ctrl" ~ 1,
+                             ligand != "ctrl" ~ 0))
+  x
+}
+
+
+
+joinBindGroupAndSummarize <- function(data, sampleAnno, ligands, featureName, bind_with1, bind_with2) {
+  x <-
+    data %>% 
+    left_join(sampleAnno) %>% 
+    filter(ligand %in% ligands) %>% 
+    dplyr::select(1:8) %>% 
+    dplyr::select(-contains("specimen")) %>% 
+    bind_rows(bind_with1) %>% 
+    bind_rows(bind_with2) %>% 
+    group_by(experimentalCondition, family, ligand, experimentalTimePoint) %>%
+    arrange(experimentalTimePoint) %>%
+    dplyr::summarize(meanExpr = mean(expression),
               stdevExpr = var(expression)^(1/2),
               stderrExpr = (var(expression)^(1/2))/(length(expression)^(1/2))) %>%
     data.frame() %>%
@@ -79,12 +101,11 @@ joinBindGroupAndSummarize <- function(data, sampleAnno, ligands, featureName, bi
 }
 
 ###############################################################################
-# ATACseq motifs
-###############################################################################
+# importing ATACseq motifs
 
 if(!grepl("R$", getwd())) {setwd("R")}
 
-sa.RNA    <- read.csv(saRNA, 
+sa.RNA    <- read.csv(saRNAFile, 
                       header = TRUE, stringsAsFactors = FALSE)
 
 motifs <- read.csv(motifFile, 
@@ -108,36 +129,62 @@ motifs.L3.IFNG0 <-
                values_to = "expression") %>% 
   renameTime0(sa.RNA, "IFNG")
 
-motif.plots <- lapply(c(1:2), function(x) {
+indMotifScores <- lapply(c(1:2), function(x) {
+  motifs %>% 
+    filter(family %in% families) %>% 
+    pivot_longer(cols = -family, 
+                 names_to = "specimenID",
+                 values_to = "expression") %>% 
+    f2(sa.RNA,
+                              c("EGF", "IFNG", "ctrl"),
+                              family,
+                              motifs.L3.EGF0,
+                              motifs.L3.IFNG0) 
+})
+
+
+meanMotifScores <- lapply(c(1:2), function(x) {
   motifs %>% 
     filter(family %in% families) %>% 
     pivot_longer(cols = -family, 
                  names_to = "specimenID",
                  values_to = "expression") %>% 
     joinBindGroupAndSummarize(sa.RNA,
-                              c("EGF", "IFNG", "ctrl"),
-                              family,
-                              motifs.L3.EGF0,
-                              motifs.L3.IFNG0) %>% 
-    ggplot(aes(experimentalTimePoint,
-               meanExpr,
-               color = ligand)) +
-    geom_line(aes(group = ligand)) +
-    geom_point() +
-    geom_errorbar(aes(min = meanExpr - stderrExpr,
-                      max = meanExpr + stderrExpr),
-                  width = 2) +
-    geom_point(aes(alpha = clear)) +
-    facet_wrap_paginate(~family, scales = "free", nrow = 1, ncol = 1, page = x) +
-    scale_color_manual(values = col$ligand) +
-    scale_alpha(guide = FALSE) +
-    ylab("Motif Enrichment") +
-    ggtitle("ATACseq Motif Enrichment") +
-    scale_x_continuous("time", breaks = c(0, 24, 48), labels = c("0", "24", "48"))
+       c("EGF", "IFNG", "ctrl"),
+       family,
+       motifs.L3.EGF0,
+       motifs.L3.IFNG0) 
 })
 
 pdf(sprintf("%s/MDD_SF3E.pdf", outDir), height = 5, width = 6)
-ggdraw(motif.plots[[1]])
-ggdraw(motif.plots[[2]])
+a[[1]] %>% left_join(b[[1]]) %>%
+  ggplot(aes(experimentalTimePoint,
+             meanExpr,
+             color = ligand)) +
+  geom_line(aes(group = ligand)) +
+  geom_point(size = .5,aes(experimentalTimePoint, expression), color = "black") +
+  geom_errorbar(aes(min = meanExpr - stdevExpr,
+                    max = meanExpr + stdevExpr),
+                width = 2) +
+  # geom_point(aes(alpha = clear)) +
+  facet_wrap_paginate(~family, scales = "free", nrow = 1, ncol = 1, page = 1) +
+  scale_color_manual(values = col$ligand) +
+  ylab("Motif Enrichment") +
+  ggtitle("ATACseq Motif Enrichment") +
+  scale_x_continuous("time", breaks = c(0, 24, 48), labels = c("0", "24", "48"))
+a[[1]] %>% left_join(b[[1]]) %>%
+  # filter(family == "STAT factors") %>% 
+  ggplot(aes(experimentalTimePoint,
+             meanExpr,
+             color = ligand)) +
+  geom_line(aes(group = ligand)) +
+  geom_point(aes(experimentalTimePoint, expression), color = "black") +
+  geom_errorbar(aes(min = meanExpr - stdevExpr,
+                    max = meanExpr + stdevExpr),
+                width = 2) +
+  facet_wrap_paginate(~family, scales = "free", nrow = 1, ncol = 1, page = 2) +
+  scale_color_manual(values = col$ligand) +
+  ylab("Motif Enrichment") +
+  ggtitle("ATACseq Motif Enrichment") +
+  scale_x_continuous("time", breaks = c(0, 24, 48), labels = c("0", "24", "48"))
 dev.off()
-

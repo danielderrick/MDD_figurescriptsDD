@@ -7,8 +7,8 @@ library(tidyverse)
 library(eulerr)
 library(ComplexHeatmap)
 
-RPPA_limmaFile  <- "MDD_RPPA_limma.R"
-colScript  <- "MDD_importColors_pretty.R"
+RPPA_limmaFile  <- "MDD_RPPA_limmaCA.R"
+colFile  <- "../misc/MDD_color_codes.csv"
 RNA_resultsFile <- "../RNAseq/Data/MDD_RNAseq_shrunkenResults_df.Rdata"
 
 RNAseq_logFC_threshold <- 1.5
@@ -19,8 +19,28 @@ outDir <- "../plots/MDD_manuscript_figures"
 if(!grepl("R$", getwd())) { setwd("R") }
 
 source(RPPA_limmaFile)
-source(colScript)
+
+
 ###############################################################################
+col_MDD <- read.csv(colFile)
+col_MDD <- list(
+  Ligand = dplyr::slice(col_MDD, 1:8),
+  Time = dplyr::slice(col_MDD, 10:15),
+  # secondLigand = dplyr::slice(col_MDD, 17:18),
+  # replicate = dplyr::slice(col_MDD, 19:24),
+  collection = dplyr::slice(col_MDD, 26:28)
+)
+
+col_MDD <-
+  lapply(col_MDD, function(x) {
+    x <- setNames(as.character(x[, 2]), x[, 1])
+  })
+
+names(col_MDD$Ligand)[1] <- "CTRL"
+names(col_MDD$Ligand)[6:8] <- sprintf("%s+EGF", names(col_MDD$Ligand)[6:8])
+
+order <- c("CTRL", "PBS", "HGF", "OSM", "EGF", "BMP2+EGF", "IFNG+EGF", "TGFB+EGF")
+col_MDD$Ligand <- col_MDD$Ligand[order]
 
 ###############################################################################
 # Filtering antibody annotation table to non-phospho, non-multi-protein abs
@@ -56,6 +76,7 @@ load(RNA_resultsFile)
 
 setdiff(res$hgnc_symbol, res_RNA_df$PBS_24$hgnc_symbol)
 
+# Manually fixing hgnc symbols 
 res$hgnc_symbol[res$hgnc_symbol == "AIM1"]  <- "CRYBG1"
 res$hgnc_symbol[res$hgnc_symbol == "CD29"]  <- "ITGB1"
 res$hgnc_symbol[res$hgnc_symbol == "CDC2"]  <- "CDK1"
@@ -181,9 +202,9 @@ Heatmap(RNA_matched_factors, cluster_columns = FALSE,
         col = c("Upregulated" = "Red",
                 "No Change" = "gray95",
                 "Downregulated" = "Blue"),
-        heatmap_legend_param = c(labels = fct_inorder(as.factor(unique(levels(RNA_matched_factors$PBS_48)))),
-                                 title = "RNAseq",
-                                 legend_gp = gpar(fill = c("blue", "white", "red"))),
+        # heatmap_legend_param = c(labels = fct_inorder(as.factor(unique(levels(RNA_matched_factors$PBS_48)))),
+        #                          title = "RNAseq",
+        #                          legend_gp = gpar(fill = c("blue", "white", "red"))),
         show_column_names = FALSE) + 
 Heatmap(RPPA_matched_factors, cluster_columns = FALSE, 
         show_row_names = FALSE, column_title = "RPPA", 
@@ -191,9 +212,9 @@ Heatmap(RPPA_matched_factors, cluster_columns = FALSE,
         col = c("Upregulated" = "Red",
                 "No Change" = "gray95",
                 "Downregulated" = "Blue"),
-        heatmap_legend_param = c(labels = unique(levels(RNA_matched_factors$PBS_48)),
-                                 title = "RPPA",
-                                 legend_gp = gpar(fill = c("blue", "white", "red"))),
+        # heatmap_legend_param = c(labels = unique(levels(RNA_matched_factors$PBS_48)),
+        #                          title = "RPPA",
+        #                          legend_gp = gpar(fill = c("blue", "white", "red"))),
         show_column_names = FALSE)
 dev.off()
 
@@ -244,6 +265,3 @@ euler(DEFeatureList[!grepl("NoChange", names(DEFeatureList))]) %>%
        fills = c("steelblue4", "firebrick4", "steelblue1", "firebrick2"))
 dev.off()
 
-intersect(DEFeatureList$RNAseq_NoChange,
-          DEFeatureList$RPPA_NoChange) %>% 
-  length

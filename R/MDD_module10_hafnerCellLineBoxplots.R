@@ -211,6 +211,8 @@ module10_meansBoxplot_abemaOrder <-
 
 module10_meansBoxplot_abemaOrder
 
+mDF_means %>% pull(sample) %>% unique %>% sort
+
 pdf(sprintf("%s/MDD_F6G.pdf", outDir), 
     height = 7, width = 7)
 module10_meansBoxplot_abemaOrder

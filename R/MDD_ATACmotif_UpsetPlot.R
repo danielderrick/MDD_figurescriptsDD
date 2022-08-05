@@ -1,3 +1,7 @@
+# The purpose of this script is to generate an UpSet plot 
+# of the ATAC-seq motif features associated with each ligand
+# treatment
+#
 library(eulerr)
 library(tidyverse)
 library(UpSetR)
@@ -51,10 +55,6 @@ uniqueFeatures <-
   filter(Direction == "Positive") %>%
   dplyr::select(-contains("Direction"))
 
-temp <- bind_rows(myFile1,
-                  myFile2) %>% 
-  split(.$ligand, .$feature)
-
 motifFeatures <- 
   bind_rows(sharedFeatures,
             uniqueFeatures) %>% 
@@ -66,7 +66,7 @@ if (!dir.exists(outDirPlots)) {
   dir.create(outDirPlots, recursive = TRUE)
 }
 
-pdf(sprintf("%s/MDD_F4C.pdf", outDirPlots),
+pdf(sprintf("%s/MDD_F4C_DC.pdf", outDirPlots),
     height = 4.5, width = 4.5)
 lapply(motifFeatures, pull, feature) %>% 
   fromList() %>% 

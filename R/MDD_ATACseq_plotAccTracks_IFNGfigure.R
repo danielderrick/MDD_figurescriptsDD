@@ -1,5 +1,4 @@
 # 
-
 library(tidyverse)
 library(biomaRt)
 library(DiffBind)
@@ -22,8 +21,8 @@ makeDBSampleSheet <- function(sampleAnno) {
     mutate(Replicate           = as.factor(replicate),
            Factor              = fct_inorder(as.factor(experimentalCondition)),
            PeakCaller          = "narrow",
-           Peaks               = paste0("../", Peaks),
-           bamReads            = paste0("../", bamReads)
+           Peaks               = paste0("../../MDD/", Peaks),
+           bamReads            = paste0("../../MDD/", bamReads)
     )
   ss
 }
@@ -203,6 +202,8 @@ geneToPlot <- function(symbol, buffer, basicDob, mart, sA, extraGenes = NULL) {
 }
 
 
+annoFile <- ("../../MDD/ATACseq/Metadata/MDD_ATACseq_sampleMetadata.csv")
+
 ###############################################################################
 
 if(!grepl("R$", getwd())) {setwd("R")}
@@ -219,7 +220,6 @@ sampleAnno <- read.csv(annoFile, stringsAsFactors = FALSE) %>%
   filter(ATACseq_QCpass) %>% 
   filter(ligand %in% c("ctrl", "EGF", "IFNG")) %>% 
   filter(experimentalTimePoint %in% c(0, 48))
-
 ###############################################################################
 # Creating DiffBind samplesheet. Low-quality samples are removed.
 sSheet    <- makeDBSampleSheet(sampleAnno) %>% 
